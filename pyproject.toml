@@ -10,13 +10,27 @@ dependencies = [
     "torch==2.5.1",
     "torchvision==0.20.1",
     "torchaudio==2.5.1",
-    "transformers==4.57.1",
+    "transformers==5.0.0rc1",
+    "accelerate>=1.13.0",
+    "datasets>=5.0.0",
+    "pillow>=12.2.0",
+    "sentencepiece>=0.2.1",
+    "safetensors>=0.8.0",
+    "peft>=0.19.1",
+    "huggingface_hub>=0.14.1",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.15.16",
 ]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+ 
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [[tool.uv.index]]
 name = "pytorch-cu121"
