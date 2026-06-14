@@ -33,4 +33,4 @@ uv run python scripts/build_parquets.py \
     ./webchain_raw/raw/json/all_json_files \
     ./webchain_dataset \
     --workers 12 \
-    --chunk 500
+    --chunk 2000

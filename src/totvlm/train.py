@@ -32,7 +32,9 @@ USE_HISTORY = False   # OOM fix: each history image adds ~hundreds of tokens
 AUX_LAMBDA  = 0.1    # weight of auxiliary tasksense loss in model (set 0 to disable)
 GRAD_CKPT   = True   # True = fit on small GPU (slow). False = big GPU (~30-40% faster)
 VAL_EVERY   = 100
+SAVE_EVERY  = 200    # write a checkpoint every N steps (crash insurance)
 SAVE_DIR    = "checkpoints/lora-tot"
+RESUME      = True   # if True, resume from checkpoints/lora-tot/last if it exists
 
 
 def _run_val(model, val_loader, device) -> dict:
@@ -60,6 +62,54 @@ def _run_val(model, val_loader, device) -> dict:
             n += 1
     model.train()
     return {k: v / max(n, 1) for k, v in totals.items()}
+
+
+def _save_checkpoint(model, opt, step, tag, best_val):
+    """
+    Save LoRA adapters + both heads + optimizer + step counter under
+    SAVE_DIR/<tag>/. Atomic-ish: writes then the caller can trust it exists.
+
+    tag examples: "last" (rolling latest), "best" (lowest val loss),
+                  "step_400" (periodic milestone).
+    """
+    path = os.path.join(SAVE_DIR, tag)
+    os.makedirs(path, exist_ok=True)
+    # LoRA adapters (PEFT handles its own format)
+    model.backbone.save_pretrained(path)
+    # Our two regression heads + training state in one file
+    torch.save({
+        "main_head": model.main_head.state_dict(),
+        "aux_head":  model.aux_head.state_dict(),
+        "optimizer": opt.state_dict(),
+        "step":      step,
+        "best_val":  best_val,
+    }, os.path.join(path, "training_state.pt"))
+
+
+def _load_checkpoint(model, opt, device):
+    """
+    Resume from SAVE_DIR/last if it exists. Returns (start_step, best_val).
+    LoRA adapters are reloaded into the existing PEFT model in-place.
+    """
+    path = os.path.join(SAVE_DIR, "last")
+    state_file = os.path.join(path, "training_state.pt")
+    if not os.path.exists(state_file):
+        return 0, float("inf")
+
+    print(f"Resuming from {path} ...", flush=True)
+    # Reload LoRA adapter weights into the current model
+    from peft import PeftModel  # local import keeps top of file clean
+    # The adapters were saved by save_pretrained; load_adapter merges them back
+    model.backbone.load_adapter(path, adapter_name="default", is_trainable=True)
+
+    ckpt = torch.load(state_file, map_location=device)
+    model.main_head.load_state_dict(ckpt["main_head"])
+    model.aux_head.load_state_dict(ckpt["aux_head"])
+    opt.load_state_dict(ckpt["optimizer"])
+    start_step = ckpt["step"]
+    best_val   = ckpt.get("best_val", float("inf"))
+    print(f"Resumed at step {start_step} (best_val={best_val:.4f})", flush=True)
+    return start_step, best_val
 
 
 def main():
@@ -110,14 +160,18 @@ def main():
     trainable = [p for p in model.parameters() if p.requires_grad]
     opt       = torch.optim.AdamW(trainable, lr=LR)
 
+    # Resume from last checkpoint if requested and one exists
+    start_step, best_val = (_load_checkpoint(model, opt, device)
+                            if RESUME else (0, float("inf")))
+
     # ── Training loop (with gradient accumulation) ────────────────────────────
     # We run GRAD_ACCUM forward/backward passes, summing gradients, then take
     # ONE optimizer step. Effective batch size = BATCH * GRAD_ACCUM, but peak
     # memory stays at BATCH. Far fewer optimizer steps = less Python overhead
     # and smoother gradients, without using more VRAM.
     model.train()
-    step = 0          # counts optimizer steps (one per GRAD_ACCUM micro-batches)
-    micro = 0         # counts micro-batches since last optimizer step
+    step = start_step  # resume-aware: continue from where we left off
+    micro = 0          # counts micro-batches since last optimizer step
     accum_loss = accum_main = accum_aux = 0.0
 
     for batch in train_loader:
@@ -185,15 +239,27 @@ def main():
             )
             wandb.log({f"val/{k}": v for k, v in val_metrics.items()} | {"step": step})
 
+            # Track and save the best model by validation loss
+            if val_metrics["loss"] < best_val:
+                best_val = val_metrics["loss"]
+                _save_checkpoint(model, opt, step, "best", best_val)
+                print(f"  new best val loss {best_val:.4f} -> saved checkpoints/.../best",
+                      flush=True)
+
+        # Periodic crash-insurance checkpoint (rolling "last")
+        if step % SAVE_EVERY == 0:
+            _save_checkpoint(model, opt, step, "last", best_val)
+            print(f"  checkpoint saved at step {step} -> checkpoints/.../last", flush=True)
+
         if step >= STEPS:
             break
 
-    # ── Save ─────────────────────────────────────────────────────────────────
-    os.makedirs(SAVE_DIR, exist_ok=True)
+    # ── Final save ────────────────────────────────────────────────────────────
+    _save_checkpoint(model, opt, step, "final", best_val)
+    # Also drop the LoRA adapters at SAVE_DIR root for easy loading at inference
     model.backbone.save_pretrained(SAVE_DIR)
-    torch.save(model.main_head.state_dict(), f"{SAVE_DIR}/main_head.pt")
-    torch.save(model.aux_head.state_dict(),  f"{SAVE_DIR}/aux_head.pt")
-    print(f"\nSaved LoRA + heads → {SAVE_DIR}/")
+    print(f"\nSaved final model -> {SAVE_DIR}/final/")
+    print(f"Best val loss seen: {best_val:.4f} (in {SAVE_DIR}/best/)")
     print(f"Training complete: {step} steps")
     wandb.finish()
 
