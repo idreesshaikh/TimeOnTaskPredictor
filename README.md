@@ -14,29 +14,23 @@ src/totvlm/
 
 ```bash
 uv sync
-uv run huggingface-cli login    # WebChain is gated — request access first
+uv run hf login    # WebChain is gated — request access first
 ```
 
 > If torch installs CPU-only, re-sync with your CUDA index:
 > `uv sync --index https://download.pytorch.org/whl/cu121`
 
-## Step 1 — confirm column names (run once)
-
-```bash
-uv run python -c "
-from datasets import load_dataset
-r = next(iter(load_dataset('webagentlab/WebChain', split='train', streaming=True)))
-for k, v in r.items():
-    print(k, type(v).__name__)
-"
-```
-
-Update `COLS` in `data.py` to match what you see.
-
-## Step 2 — train
+## Step 1 — train
 
 ```bash
 uv run python -m totvlm.train
 ```
 
 Set `USE_HISTORY = False` in `train.py` for the single-screen baseline (RQ2 ablation).
+
+
+uv run python scripts/build_parquets.py \
+    ./webchain_raw/raw/json/all_json_files \
+    ./webchain_dataset \
+    --workers 12 \
+    --chunk 500

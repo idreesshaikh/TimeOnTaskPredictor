@@ -1,60 +1,41 @@
 """
-data.py — stream WebChain, group steps into trajectories, yield training examples.
+totvlm/data.py
+==============
+Data loading for Time-on-Task prediction.
 
-Each row in WebChain is ONE STEP of a trajectory. HF streams the parquet shards
-so nothing is downloaded to disk. We buffer consecutive rows with the same
-trajectory_id, then compute dwell times and yield one example per screen.
+Loads from pre-built parquet files (output of build_parquets.py).
+Each row already has difficulty_score, tasksense_ms, and n_elements
+pre-computed — no AX tree fetching or z-score math at training time.
 
-Before training, confirm the column names match your data:
+Dataset directory structure expected:
+    webchain_dataset/
+    ├── train/  chunk_00000.parquet  chunk_00001.parquet ...
+    ├── val/    chunk_00000.parquet ...
+    └── test/   chunk_00000.parquet ...
 
-    uv run python -c "
-    from datasets import load_dataset
-    r = next(iter(load_dataset('webagentlab/WebChain', split='train', streaming=True)))
-    for k, v in r.items():
-        print(k, type(v).__name__)
-    "
-
-Then update COLS below to match.
+At training:  image + tasksense_ms + step_frac → predict difficulty_score
+At inference: image only → predict difficulty_score
 """
-
 from __future__ import annotations
 
-import hashlib
 import io
-import json
-import math
 import random
+from pathlib import Path
 
+import pandas as pd
 import torch
-from datasets import load_dataset
 from PIL import Image
 from torch.utils.data import DataLoader, IterableDataset
 
-from totvlm.scoring import tasksense_difficulty
-
-REPO = "webagentlab/WebChain"
-MAX_SIDE = 1024
+DATASET_DIR = "webchain_dataset"   # ← set to your build_parquets.py output dir
+MAX_SIDE    = 512    # OOM fix: 1024->512 cuts visual tokens by ~4x
 MAX_HISTORY = 3
 
-# Update these to match the real column names from the inspection above.
-COLS = {
-    "traj": "trajectory_id",
-    "step": "step_id",
-    "goal": "task",
-    "shot": "screenshot",
-    "ax": "ax_tree",
-    "ts": "timestamp",
-    "action": "action_type",
-}
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _img(raw) -> Image.Image | None:
-    if isinstance(raw, dict):  # HF Image feature -> extract bytes
+# ── Image helper ──────────────────────────────────────────────────────────────
+def _to_pil(raw) -> Image.Image | None:
+    """Convert raw bytes (or HF Image dict) to a PIL image."""
+    if isinstance(raw, dict):
         raw = raw.get("bytes")
     if not raw:
         return None
@@ -63,55 +44,8 @@ def _img(raw) -> Image.Image | None:
     return img
 
 
-def _secs(ts) -> float | None:
-    if ts is None:
-        return None
-    ts = float(ts)
-    return ts / 1000 if ts >= 1e11 else ts  # ms -> s if needed
-
-
-def _delta(a: float | None, b: float | None) -> float | None:
-    if a is not None and b is not None and a >= b:
-        return a - b
-    return None
-
-
-def _n_interactive(ax) -> int:
-    if isinstance(ax, str):
-        try:
-            ax = json.loads(ax)
-        except Exception:
-            return 0
-    roles = {
-        "button",
-        "link",
-        "textbox",
-        "checkbox",
-        "radio",
-        "combobox",
-        "menuitem",
-        "tab",
-        "option",
-    }
-    n, stack = 0, [ax]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, dict):
-            if str(node.get("role", node.get("type", ""))).lower() in roles:
-                n += 1
-            stack.extend(node.get("children", []) or [])
-        elif isinstance(node, list):
-            stack.extend(node)
-    return n
-
-
-def _is_val(traj_id: str, frac: float = 0.10) -> bool:
-    """Deterministic 10 % val holdout carved from train, by trajectory."""
-    h = int(hashlib.sha256(traj_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
-    return h < frac
-
-
-def _shuffle(it, n: int, seed: int = 0):
+# ── Shuffle buffer ────────────────────────────────────────────────────────────
+def _shuffle(it, n: int, seed: int = 42):
     rng, buf = random.Random(seed), []
     for x in it:
         buf.append(x)
@@ -121,118 +55,129 @@ def _shuffle(it, n: int, seed: int = 0):
     yield from buf
 
 
-# ---------------------------------------------------------------------------
-# Trajectory grouping + example generation
-# ---------------------------------------------------------------------------
-
-
-def _group(stream, keep):
-    """Yield (steps, goal) by buffering rows that share a trajectory_id."""
-    buf: list[dict] = []
-    cur: str | None = None
-    goal: str = ""
-    for row in stream:
-        tid = str(row.get(COLS["traj"], ""))
-        if tid != cur:
-            if buf and cur is not None and keep(cur):
-                yield buf, goal
-            buf, cur = [], tid
-        goal = str(row.get(COLS["goal"]) or goal)
-        buf.append(row)
-    if buf and cur is not None and keep(cur):
-        yield buf, goal
-
-
-def _examples(steps: list[dict], goal: str, use_history: bool):
-    """One trajectory -> per-screen training dicts."""
-    if len(steps) < 2:
-        return
-    steps = sorted(steps, key=lambda s: int(s.get(COLS["step"]) or 0))
-    ts = [_secs(s.get(COLS["ts"])) for s in steps]
-    dwell: list[float | None] = [None] + [
-        _delta(ts[i], ts[i - 1]) for i in range(1, len(steps))
-    ]
-    logs = [math.log1p(d) for d in dwell if d is not None]
-    if not logs:
-        return
-    mean = sum(logs) / len(logs)
-    std = max((sum((x - mean) ** 2 for x in logs) / len(logs)) ** 0.5, 1e-3)
-
-    history: list[Image.Image] = []
-    for i, s in enumerate(steps):
-        img = _img(s.get(COLS["shot"]))
-        d = dwell[i]
-        if img is not None and d is not None:
-            yield {
-                "image": img,
-                "history": history[-MAX_HISTORY:] if use_history else [],
-                "goal": goal,
-                "target": (math.log1p(d) - mean) / std,
-                "dwell_seconds": d,
-                "tasksense": tasksense_difficulty(
-                    s.get(COLS["action"]),
-                    _n_interactive(s.get(COLS["ax"])),
-                ).score,
-            }
-        if img is not None:
-            history.append(img)
-
-
-# ---------------------------------------------------------------------------
-# Dataset + DataLoader
-# ---------------------------------------------------------------------------
-
-
+# ── Dataset ───────────────────────────────────────────────────────────────────
 class WebChainToT(IterableDataset):
+    """
+    Streams examples from pre-built parquet files.
+
+    Each example:
+        image          : PIL image (current screen)
+        history        : list of up to MAX_HISTORY previous PIL images
+        goal           : task instruction string
+        target         : difficulty_score (z-scored log dwell) ← regression target
+        tasksense      : tasksense_ms (structural difficulty, auxiliary signal)
+        step_frac      : 0.0→1.0 position in task (0=first step, 1=last)
+
+    Args:
+        split          : "train", "val", or "test"
+        dataset_dir    : path to build_parquets.py output directory
+        use_history    : include previous screenshots (set False for ablation)
+        shuffle_buffer : rows buffered for random shuffling (train only)
+        max_chunks     : limit chunks loaded (None = all; set small for debugging)
+    """
+
     def __init__(
-        self, split: str = "train", use_history: bool = True, shuffle_buffer: int = 256
+        self,
+        split:          str  = "train",
+        dataset_dir:    str  = DATASET_DIR,
+        use_history:    bool = True,
+        shuffle_buffer: int  = 512,
+        max_chunks:     int | None = None,
     ):
-        self.split = split
-        self.use_history = use_history
+        self.split          = split
+        self.dataset_dir    = Path(dataset_dir)
+        self.use_history    = use_history
         self.shuffle_buffer = shuffle_buffer
+        self.max_chunks     = max_chunks
 
-    def _keep(self, traj_id: str) -> bool:
-        if self.split == "test":
-            return True
-        val = _is_val(traj_id)
-        return val if self.split == "val" else not val
+        split_dir = self.dataset_dir / split
+        if not split_dir.exists():
+            raise FileNotFoundError(
+                f"Split directory not found: {split_dir}\n"
+                f"Run build_parquets.py first to generate the dataset."
+            )
+        self._chunks = sorted(split_dir.glob("chunk_*.parquet"))
+        if not self._chunks:
+            raise FileNotFoundError(f"No parquet chunks found in {split_dir}")
+        if max_chunks:
+            self._chunks = self._chunks[:max_chunks]
 
-    def _raw(self):
-        hf_split = "test" if self.split == "test" else "train"
-        stream = load_dataset(REPO, split=hf_split, streaming=True)
-        for steps, goal in _group(stream, self._keep):
-            yield from _examples(steps, goal, self.use_history)
+    def _iter_examples(self):
+        """
+        Stream examples chunk by chunk.
+        Within each chunk, group rows by trajectory_id and sort by step_idx
+        so history is built in the correct order.
+        History resets at trajectory boundaries and between chunks
+        (trajectories spanning chunks lose their cross-chunk history — acceptable).
+        """
+        for chunk_path in self._chunks:
+            df = pd.read_parquet(chunk_path)
+
+            # Group by trajectory, preserving step order
+            for traj_id, group in df.groupby("trajectory_id", sort=False):
+                group   = group.sort_values("step_idx")
+                history = []   # PIL images of previous steps in this trajectory
+
+                for _, row in group.iterrows():
+                    img = _to_pil(row.get("image"))
+                    if img is None:
+                        continue
+
+                    yield {
+                        "image":      img,
+                        "history":    history[-MAX_HISTORY:] if self.use_history else [],
+                        "goal":       str(row.get("instruction", "")),
+                        "target":     float(row["difficulty_score"]),
+                        "tasksense":  float(row.get("tasksense_ms", 0.0)),
+                        "step_frac":  float(row.get("step_frac", 0.0)),
+                        "n_elements": int(row.get("n_elements", 0)),
+                        # kept for logging/analysis, not fed to model
+                        "dwell_seconds": float(row.get("dwell_seconds", 0.0)),
+                        "traj_mu":       float(row.get("traj_mu", 0.0)),
+                        "traj_sigma":    float(row.get("traj_sigma", 1.0)),
+                    }
+
+                    history.append(img)
 
     def __iter__(self):
-        return _shuffle(self._raw(), self.shuffle_buffer)
+        it = self._iter_examples()
+        if self.split == "train":
+            it = _shuffle(it, self.shuffle_buffer)
+        return iter(it)
 
 
+# ── Message builder ───────────────────────────────────────────────────────────
 def _build_messages(ex: dict) -> list[dict]:
-    content: list[dict] = []
-    for j, h in enumerate(ex["history"]):
+    """
+    Build the chat message for one example.
+    History screens shown first, current screen last.
+    """
+    content = []
+
+    for j, h_img in enumerate(ex["history"]):
         content += [
-            {"type": "text", "text": f"Earlier screen {j + 1}:"},
-            {"type": "image", "image": h},
+            {"type": "text",  "text": f"Earlier screen {j + 1}:"},
+            {"type": "image", "image": h_img},
         ]
+
     content += [
-        {"type": "text", "text": "Current screen:"},
+        {"type": "text",  "text": "Current screen:"},
         {"type": "image", "image": ex["image"]},
         {
             "type": "text",
-            "text": f"Task: {ex['goal']}\n"
-            "Estimate how long the user pauses on this screen.",
+            "text": (
+                f"Task: {ex['goal']}\n"
+                "Estimate how long the user pauses on this screen."
+            ),
         },
     ]
+
     return [{"role": "user", "content": content}]
 
 
-def get_dataloader(
-    processor,
-    split: str = "train",
-    use_history: bool = True,
-    batch_size: int = 2,
-    num_workers: int = 0,
-) -> DataLoader:
+# ── Collate ───────────────────────────────────────────────────────────────────
+def _collate(processor):
+    """Returns a collate_fn that uses the given processor."""
     def collate(batch: list[dict]) -> dict:
         x = processor.apply_chat_template(
             [_build_messages(e) for e in batch],
@@ -243,15 +188,61 @@ def get_dataloader(
             padding=True,
         )
         x.pop("token_type_ids", None)
-        x["target"] = torch.tensor([e["target"] for e in batch], dtype=torch.float32)
+
+        # Regression target
+        x["target"] = torch.tensor(
+            [e["target"] for e in batch], dtype=torch.float32
+        )
+        # Auxiliary TaskSense signal (used in loss or as extra input feature)
         x["tasksense"] = torch.tensor(
             [e["tasksense"] for e in batch], dtype=torch.float32
         )
+        # Task progress (0→1)
+        x["step_frac"] = torch.tensor(
+            [e["step_frac"] for e in batch], dtype=torch.float32
+        )
         return x
+    return collate
 
+
+# ── Public API ────────────────────────────────────────────────────────────────
+def get_dataloader(
+    processor,
+    split:       str  = "train",
+    dataset_dir: str  = DATASET_DIR,
+    use_history: bool = True,
+    batch_size:  int  = 2,
+    num_workers: int  = 4,
+    max_chunks:  int | None = None,
+) -> DataLoader:
+    """
+    Build a DataLoader for one split.
+
+    Args:
+        processor   : HuggingFace processor for the VLM
+        split       : "train", "val", or "test"
+        dataset_dir : path to build_parquets.py output
+        use_history : include previous screenshots (False = ablation baseline)
+        batch_size  : examples per batch
+        num_workers : DataLoader worker processes. >0 runs image decode +
+                      processor tokenization in parallel subprocesses so the
+                      GPU never waits on CPU data prep. Set to ~CPU core count
+                      (4-8 is usually plenty). 0 = main process (slow).
+        max_chunks  : limit chunks for quick smoke tests
+    """
+    ds = WebChainToT(
+        split=split,
+        dataset_dir=dataset_dir,
+        use_history=use_history,
+        shuffle_buffer=512 if split == "train" else 1,
+        max_chunks=max_chunks,
+    )
     return DataLoader(
-        WebChainToT(split, use_history),
+        ds,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=collate,
+        collate_fn=_collate(processor),
+        pin_memory=True,                                 # faster CPU→GPU copy
+        prefetch_factor=2 if num_workers > 0 else None,  # stage batches ahead
+        persistent_workers=num_workers > 0,              # don't respawn each epoch
     )
