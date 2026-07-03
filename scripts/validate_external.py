@@ -38,12 +38,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
 from totvlm.config import load_config
 from totvlm.data import PARSE_TIERS, parse_dwell_output_lenient
+from totvlm.scoring import spearman_ci
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,26 +109,8 @@ def run_predict(cfg: dict, vcfg: dict, items: pd.DataFrame) -> None:
 
 # ── Stage 2: rank agreement + report ──────────────────────────────────────────
 
-def spearman_ci(x: np.ndarray, y: np.ndarray, *, n_boot: int, ci: float,
-                seed: int) -> dict:
-    """Spearman rho with a seeded percentile-bootstrap CI over items."""
-    rho = float(spearmanr(x, y)[0])
-    rng = np.random.default_rng(seed)
-    n = len(x)
-    boots = np.empty(n_boot)
-    for b in range(n_boot):
-        idx = rng.integers(0, n, n)
-        # a degenerate resample (constant array) yields nan; keep it — it
-        # widens the CI honestly rather than hiding instability
-        boots[b] = spearmanr(x[idx], y[idx])[0]
-    alpha = (1 - ci) / 2
-    lo, hi = np.nanquantile(boots, [alpha, 1 - alpha])
-    return {"n": n, "rho": round(rho, 4), "ci": ci,
-            "ci_lo": round(float(lo), 4), "ci_hi": round(float(hi), 4),
-            "n_boot": n_boot}
-
-
-def save_scatter(df: pd.DataFrame, overall: dict, dest: Path) -> None:
+def save_scatter(df: pd.DataFrame, headline: dict, headline_label: str,
+                 dest: Path) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -144,9 +125,9 @@ def save_scatter(df: pd.DataFrame, overall: dict, dest: Path) -> None:
     ax.set_ylabel("VLM predicted dwell (s)")
     ax.set_title(
         "Zero-shot rank agreement on the external set\n"
-        f"Spearman ρ = {overall['rho']:.3f} "
-        f"[{overall['ci_lo']:.3f}, {overall['ci_hi']:.3f}] "
-        f"({int(overall['ci'] * 100)}% bootstrap CI, n={overall['n']})")
+        f"{headline_label}: Spearman ρ = {headline['rho']:.3f} "
+        f"[{headline['ci_lo']:.3f}, {headline['ci_hi']:.3f}] "
+        f"({int(headline['ci'] * 100)}% bootstrap CI, n={headline['n']})")
     ax.legend(frameon=False, loc="upper right")
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
@@ -185,15 +166,18 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
         for cat, part in ok.groupby("category") if len(part) >= 3
     }
 
+    primary = rcfg["primary_category"]
+    headline = by_cat.get(primary, overall)
+    headline_label = (f"{primary} (in-domain)" if primary in by_cat
+                      else "ALL")
     scatter = Path(cfg["paths"]["scatter_png"])
-    save_scatter(ok, overall, scatter)
+    save_scatter(ok, headline, headline_label, scatter)
 
     def fmt(name: str, m: dict) -> str:
         return (f"| {name} | {m['n']} | {m['rho']:.4f} "
                 f"| [{m['ci_lo']:.4f}, {m['ci_hi']:.4f}] |")
 
     src = cfg["source"]
-    primary = rcfg["primary_category"]
     lines = [
         "# External validation report — frozen VLM, zero-shot (O3)",
         "",
@@ -238,11 +222,19 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
         f"{int(rcfg['ci'] * 100)}% bootstrap CI, "
         f"{rcfg['bootstrap_samples']} resamples)",
         "",
+        f"The training corpus (WebChain) is web-only, so **`{primary}` is "
+        "the fair, in-domain comparison and the headline number** "
+        "(pre-registered in configs/external.yaml). The other categories "
+        "are kept as out-of-domain transfer results — informative, never "
+        "the headline.",
+        "",
         "| subset | n | ρ | CI |",
         "|---|---|---|---|",
-        fmt("ALL", overall),
-        *[fmt(f"{cat}" + (" (in-domain, primary)" if cat == primary else ""),
-              m) for cat, m in sorted(by_cat.items())],
+        *([fmt(f"**{primary} (in-domain, primary)**", by_cat[primary])]
+          if primary in by_cat else []),
+        fmt("ALL (incl. out-of-domain)", overall),
+        *[fmt(f"{cat} (out-of-domain transfer)", m)
+          for cat, m in sorted(by_cat.items()) if cat != primary],
         "",
         f"![scatter]({scatter.name})",
         "",

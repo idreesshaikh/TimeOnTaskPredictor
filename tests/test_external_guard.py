@@ -20,6 +20,7 @@ FORBIDDEN = "data/external"
 ALLOWED = {
     REPO / "scripts" / "prepare_external.py",
     REPO / "scripts" / "validate_external.py",
+    REPO / "scripts" / "analyze_aim.py",   # post-hoc, reads cached preds only
     REPO / "configs" / "external.yaml",
 }
 
