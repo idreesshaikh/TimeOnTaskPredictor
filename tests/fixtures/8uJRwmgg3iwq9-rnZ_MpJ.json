@@ -1,0 +1,781 @@
+{
+ "id": "8uJRwmgg3iwq9-rnZ_MpJ",
+ "steps": [
+  {
+   "id": "7c8F0kp_ZudG5ByAje1Wh",
+   "host": "",
+   "href": "",
+   "mask": false,
+   "type": "launchApp",
+   "model": "guide",
+   "tabId": 758227536,
+   "title": "",
+   "value": "",
+   "width": 275,
+   "trigger": true,
+   "position": "bottom",
+   "richLink": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"https://shopee.com.my/\"}]}]}",
+   "hostTitle": "",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {}
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "buttonRadius": 8,
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "wpLj_4Bm4sK_biq_XnHR_",
+   "img": "https://data.imean.tech/uploads/1734364137817-OMzNM.png",
+   "host": "shopee.com.my",
+   "href": "https://shopee.com.my/",
+   "mask": false,
+   "path": "body>div>div>div>header>div>nav>ul>a>span",
+   "rect": {
+    "x": 1018.013916015625,
+    "y": 9.19444465637207,
+    "top": 9.19444465637207,
+    "left": 1018.013916015625,
+    "right": 1044.041694641113,
+    "width": 26.02777862548828,
+    "bottom": 24.79166698455811,
+    "height": 15.59722232818604
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 1027.555541992188,
+   "pageY": 19.11112403869629,
+   "tabId": 758227536,
+   "title": "\u70b9\u51fb Help",
+   "value": "Help",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364140491-5dHAU.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 1027.555541992188,
+   "clientY": 19.11112403869629,
+   "favicon": "https://data.imean.tech/uploads/1734342370950-X-HQt.png",
+   "offsetX": 9.541666984558104,
+   "offsetY": 9.916680335998535,
+   "screenX": 1214,
+   "screenY": 153.3333435058594,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".navbar__link-text.navbar__link--tappable ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee Malaysia | Free Shipping Across Malaysia",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "SPAN",
+      "index": 1
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364135349,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.9440165340733462,
+    "y": 0,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mrjcbth5ro66ciwtbfv9qcer5x68yg-1734364130553"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "HLN8vl1v2IUMqWuMSu2c8",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "type": "launchApp",
+   "model": "guide",
+   "tabId": 758228235,
+   "title": "",
+   "value": "",
+   "width": 275,
+   "trigger": true,
+   "position": "bottom",
+   "richLink": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"https://help.shopee.com.my/portal/4\"}]}]}",
+   "hostTitle": "Shopee MY Help Center",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {}
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "buttonRadius": 8,
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "w-glWxHce3PvBmvFlAHRA",
+   "img": "https://data.imean.tech/uploads/1734364142287-YZ0bq.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>div>div>div>div",
+   "rect": {
+    "x": 510.7777709960938,
+    "y": 578.7777709960938,
+    "top": 578.7777709960938,
+    "left": 510.7777709960938,
+    "right": 650.7777709960938,
+    "width": 140,
+    "bottom": 598.7777709960938,
+    "height": 20
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 581.3333129882812,
+   "pageY": 581.77783203125,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb Deals & Rewards",
+   "value": "Deals & Rewards",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364143228-1dWg7.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 581.3333129882812,
+   "clientY": 581.77783203125,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 581.3333129882812,
+   "offsetY": 581.77783203125,
+   "screenX": 879.3333740234375,
+   "screenY": 575.3333740234375,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".category_items___1jJ0x >div:nth-child(1)>div:nth-child(1)>div:nth-child(1)>div:nth-child(6)>.text___2YPkO ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "DIV",
+      "index": 1
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364141883,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.3134142450925683,
+    "y": -0.8629115069354022,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mrjcbth5ro66ciwtbfv9qcer5x68yg-1734364138841"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "kZqM_R7Ulhvhaurr2x-Fs",
+   "img": "https://data.imean.tech/uploads/1734364148845-2VfwX.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/662-Promotions?page=1",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>div>div>div>div",
+   "rect": {
+    "x": 184.8888854980469,
+    "y": 637,
+    "top": 637,
+    "left": 184.8888854980469,
+    "right": 454.8888854980469,
+    "width": 270,
+    "bottom": 657,
+    "height": 20
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 250.6666717529297,
+   "pageY": 653.77783203125,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb Reward Programmes",
+   "value": "Reward Programmes",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364150496-yZuTU.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 250.6666717529297,
+   "clientY": 653.77783203125,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 54.66666793823242,
+   "offsetY": 16.77783203125,
+   "screenX": 631.3333740234375,
+   "screenY": 629.3333740234375,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".category_items___pBMDO >div:nth-child(2)>div:nth-child(1)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Promotions | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "DIV",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364148566,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": 0,
+    "y": -0.9976851851851852,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mrjcbth5ro66ciwtbfv9qcer5x68yg-1734364144240"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "sPYwyGW9Atc6YYXtFsG42",
+   "img": "https://data.imean.tech/uploads/1734364154599-jzBoE.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/663-Reward-Programmes?page=1",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>ul",
+   "rect": {
+    "x": 1055.805541992188,
+    "y": 693.7777709960938,
+    "top": 693.7777709960938,
+    "left": 1055.805541992188,
+    "right": 1136.888877868652,
+    "width": 81.08333587646484,
+    "bottom": 717.7777709960938,
+    "height": 24
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 1087.111083984375,
+   "pageY": 1211.111145019531,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb 1\n2\n3",
+   "value": "1\n2\n3",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364156333-0iLpc.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 1087.111083984375,
+   "clientY": 707.1111450195312,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 31.30555534362793,
+   "offsetY": 13.33338737487793,
+   "screenX": 1258.666748046875,
+   "screenY": 669.3333740234375,
+   "scrollX": 0,
+   "scrollY": 504,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".shopee-react-pagination-pager__pages ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Reward Programmes | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "UL",
+      "index": 1
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364154282,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.9495798319327732,
+    "y": -1.133744840268736,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mrjcbth5ro66ciwtbfv9qcer5x68yg-1734364150643"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "tnBNUFsq6aU540DwlIXmd",
+   "img": "https://data.imean.tech/uploads/1734364155520-OntR6.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/663-Reward-Programmes?page=1",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>ul>li",
+   "rect": {
+    "x": 1088.444458007812,
+    "y": 693.7777709960938,
+    "top": 693.7777709960938,
+    "left": 1088.444458007812,
+    "right": 1104.666681289673,
+    "width": 16.22222328186035,
+    "bottom": 717.7777709960938,
+    "height": 24
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 1099.555541992188,
+   "pageY": 1207.555541992188,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb 2",
+   "value": "2",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364157568-7GdjI.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 1099.555541992188,
+   "clientY": 703.5555419921875,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 11.52777767181396,
+   "offsetY": 9.777777671813965,
+   "screenX": 1268,
+   "screenY": 666.6666870117188,
+   "scrollX": 0,
+   "scrollY": 504,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".shopee-react-pagination-pager__pages >li:nth-child(2)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Reward Programmes | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "LI",
+      "index": 1
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364155112,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.9495798319327732,
+    "y": -1.133744840268736,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "Q-umQs3-kv3Fc2YLciIEH",
+   "img": "https://data.imean.tech/uploads/1734364188248-nxVBM.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/663-Reward-Programmes?page=2",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>div>div>div>div",
+   "rect": {
+    "x": 184.8888854980469,
+    "y": 261.4444580078125,
+    "top": 261.4444580078125,
+    "left": 184.8888854980469,
+    "right": 454.8888854980469,
+    "width": 270,
+    "bottom": 281.4444580078125,
+    "height": 20
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 242.6666717529297,
+   "pageY": 616.4444580078125,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb Promotions",
+   "value": "Promotions",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364190542-NK9CS.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 242.6666717529297,
+   "clientY": 268.888916015625,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 46.66666793823242,
+   "offsetY": -340.111083984375,
+   "screenX": 625.3333740234375,
+   "screenY": 340.6666870117188,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".category_items___pBMDO >div:nth-child(1)>div:nth-child(1)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Reward Programmes | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "DIV",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364187899,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": 0,
+    "y": -0.1283436527958623,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "pO6L0jkvtqkL-fn29cmdH",
+   "img": "https://data.imean.tech/uploads/1734364207487-I_PaU.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/662-Promotions?page=1",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>ul>li",
+   "rect": {
+    "x": 1088.444458007812,
+    "y": 738.6666870117188,
+    "top": 738.6666870117188,
+    "left": 1088.444458007812,
+    "right": 1104.666681289673,
+    "width": 16.22222328186035,
+    "bottom": 762.6666870117188,
+    "height": 24
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 1096.888916015625,
+   "pageY": 1074.222259521484,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb 4",
+   "value": "4",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364209677-yH9UB.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 1096.888916015625,
+   "clientY": 755.1111450195312,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 8.861111640930176,
+   "offsetY": 16.44449806213379,
+   "screenX": 1266,
+   "screenY": 705.3333740234375,
+   "scrollX": 0,
+   "scrollY": 319.1111145019531,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".shopee-react-pagination-pager__pages >li:nth-child(4)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Promotions | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "LI",
+      "index": 3
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364207189,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.9495798319327732,
+    "y": -1.237654368082682,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mrjcbth5ro66ciwtbfv9qcer5x68yg-1734364191433"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "vdmEnLKE-kW1CSUEeHBUl",
+   "img": "https://data.imean.tech/uploads/1734364228366-N9Uut.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/662-Promotions?page=4",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>a>h3",
+   "rect": {
+    "x": 558.888916015625,
+    "y": 363.8888854980469,
+    "top": 363.8888854980469,
+    "left": 558.888916015625,
+    "right": 1184.888916015625,
+    "width": 626,
+    "bottom": 424.777774810791,
+    "height": 60.88888931274414
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 794.6666870117188,
+   "pageY": 387.1111145019531,
+   "tabId": 758228235,
+   "title": "\u70b9\u51fb [Promotions] How do I find promotions on Shopee?",
+   "value": "[Promotions] How do I find promotions on Shopee?",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364231011-vEofv.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 794.6666870117188,
+   "clientY": 387.1111145019531,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 794.6666870117188,
+   "offsetY": 387.1111145019531,
+   "screenX": 1039.333374023438,
+   "screenY": 429.3333435058594,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".list___2CXhp >a:nth-child(1)>.item___3laL- ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Promotions | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "H3",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364228025,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.6730595987637378,
+    "y": -0.3768733521619723,
+    "scale": 0.960632183908046,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "6l7p4apv5q8ogiwtbrzhj2gfcvrl2j-1734364213838"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  }
+ ],
+ "title": "Discover which reward programs offer the best promotions for frequent shoppers.",
+ "deleted": 0,
+ "createdAt": "2024-12-16T15:51:07.364000",
+ "description": null
+}

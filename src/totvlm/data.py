@@ -1,248 +1,427 @@
 """
 totvlm/data.py
 ==============
-Data loading for Time-on-Task prediction.
+Data layer for Time-on-Task prediction. Three things live here:
 
-Loads from pre-built parquet files (output of build_parquets.py).
-Each row already has difficulty_score, tasksense_ms, and n_elements
-pre-computed — no AX tree fetching or z-score math at training time.
-
-Dataset directory structure expected:
-    webchain_dataset/
-    ├── train/  chunk_00000.parquet  chunk_00001.parquet ...
-    ├── val/    chunk_00000.parquet ...
-    └── test/   chunk_00000.parquet ...
-
-At training:  image + tasksense_ms + step_frac → predict difficulty_score
-At inference: image only → predict difficulty_score
+1. Typed, tolerant views over the raw WebChain trajectory JSON
+   (`Step`, `Trajectory`, `iter_raw_trajectories`) + the raw-data audit.
+2. The Path-A SFT chat-example builder for the VLM
+   (`build_vlm_examples`): screenshot → messages whose assistant turn is
+   exactly `dwell_seconds: X.X` (winsorized dwell, 1 decimal).
+3. The matching output parser (`parse_dwell_output`) used by the val
+   decode hook and at evaluation time.
 """
 from __future__ import annotations
 
-import io
-import random
+import json
+import re
+from collections import Counter
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-import torch
 from PIL import Image
-from torch.utils.data import DataLoader, IterableDataset
 
-DATASET_DIR = "webchain_dataset"   # ← set to your build_parquets.py output dir
-MAX_SIDE    = 512    # OOM fix: 1024->512 cuts visual tokens by ~4x
-MAX_HISTORY = 3
+from totvlm.images import load_image
 
+# ── Raw trajectory schema ─────────────────────────────────────────────────────
+# Typed, tolerant views over the raw WebChain JSON. Every field is optional —
+# the raw data is inconsistent (launchApp steps have no createdTime, images are
+# sometimes URLs and sometimes opaque hashes, axTree may be null, ...).
 
-# ── Image helper ──────────────────────────────────────────────────────────────
-def _to_pil(raw) -> Image.Image | None:
-    """Convert raw bytes (or HF Image dict) to a PIL image."""
-    if isinstance(raw, dict):
-        raw = raw.get("bytes")
-    if not raw:
+def _as_int(v) -> int | None:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
         return None
-    img = Image.open(io.BytesIO(raw)).convert("RGB")
-    img.thumbnail((MAX_SIDE, MAX_SIDE))
-    return img
 
 
-# ── Shuffle buffer ────────────────────────────────────────────────────────────
-def _shuffle(it, n: int, seed: int = 42):
-    rng, buf = random.Random(seed), []
-    for x in it:
-        buf.append(x)
-        if len(buf) >= n:
-            yield buf.pop(rng.randrange(len(buf)))
-    rng.shuffle(buf)
-    yield from buf
+@dataclass
+class Step:
+    """One raw step. Field names are snake_case views of the JSON keys."""
+    id: str | None = None
+    type: str | None = None            # launchApp | click | type | select | ...
+    tab_id: int | None = None          # JSON: tabId
+    host: str | None = None
+    href: str | None = None
+    img: str | None = None             # https URL or opaque hash
+    html: str | None = None
+    ax_tree: str | None = None         # JSON: axTree (URL or null)
+    created_time: int | None = None    # JSON: createdTime, epoch ms; no launchApp
+    rect: dict | None = None
+    viewport: dict | None = None
+    scroll_x: float | None = None      # JSON: scrollX
+    scroll_y: float | None = None      # JSON: scrollY
+    value: str | None = None
+    title: str | None = None
+    node: dict | None = None           # JSON: attributes.data.node
 
-
-# ── Dataset ───────────────────────────────────────────────────────────────────
-class WebChainToT(IterableDataset):
-    """
-    Streams examples from pre-built parquet files.
-
-    Each example:
-        image          : PIL image (current screen)
-        history        : list of up to MAX_HISTORY previous PIL images
-        goal           : task instruction string
-        target         : difficulty_score (z-scored log dwell) ← regression target
-        tasksense      : tasksense_ms (structural difficulty, auxiliary signal)
-        step_frac      : 0.0→1.0 position in task (0=first step, 1=last)
-
-    Args:
-        split          : "train", "val", or "test"
-        dataset_dir    : path to build_parquets.py output directory
-        use_history    : include previous screenshots (set False for ablation)
-        shuffle_buffer : rows buffered for random shuffling (train only)
-        max_chunks     : limit chunks loaded (None = all; set small for debugging)
-    """
-
-    def __init__(
-        self,
-        split:          str  = "train",
-        dataset_dir:    str  = DATASET_DIR,
-        use_history:    bool = True,
-        shuffle_buffer: int  = 512,
-        max_chunks:     int | None = None,
-    ):
-        self.split          = split
-        self.dataset_dir    = Path(dataset_dir)
-        self.use_history    = use_history
-        self.shuffle_buffer = shuffle_buffer
-        self.max_chunks     = max_chunks
-
-        split_dir = self.dataset_dir / split
-        if not split_dir.exists():
-            raise FileNotFoundError(
-                f"Split directory not found: {split_dir}\n"
-                f"Run build_parquets.py first to generate the dataset."
-            )
-        self._chunks = sorted(split_dir.glob("chunk_*.parquet"))
-        if not self._chunks:
-            raise FileNotFoundError(f"No parquet chunks found in {split_dir}")
-        if max_chunks:
-            self._chunks = self._chunks[:max_chunks]
-
-    def _iter_examples(self):
-        """
-        Stream examples chunk by chunk.
-        Within each chunk, group rows by trajectory_id and sort by step_idx
-        so history is built in the correct order.
-        History resets at trajectory boundaries and between chunks
-        (trajectories spanning chunks lose their cross-chunk history — acceptable).
-        """
-        for chunk_path in self._chunks:
-            df = pd.read_parquet(chunk_path)
-
-            # Group by trajectory, preserving step order
-            for traj_id, group in df.groupby("trajectory_id", sort=False):
-                group   = group.sort_values("step_idx")
-                history = []   # PIL images of previous steps in this trajectory
-
-                for _, row in group.iterrows():
-                    img = _to_pil(row.get("image"))
-                    if img is None:
-                        continue
-
-                    yield {
-                        "image":      img,
-                        "history":    history[-MAX_HISTORY:] if self.use_history else [],
-                        "goal":       str(row.get("instruction", "")),
-                        "target":     float(row["difficulty_score"]),
-                        "tasksense":  float(row.get("tasksense_ms", 0.0)),
-                        "step_frac":  float(row.get("step_frac", 0.0)),
-                        "n_elements": int(row.get("n_elements", 0)),
-                        # kept for logging/analysis, not fed to model
-                        "dwell_seconds": float(row.get("dwell_seconds", 0.0)),
-                        "traj_mu":       float(row.get("traj_mu", 0.0)),
-                        "traj_sigma":    float(row.get("traj_sigma", 1.0)),
-                    }
-
-                    history.append(img)
-
-    def __iter__(self):
-        it = self._iter_examples()
-        if self.split == "train":
-            it = _shuffle(it, self.shuffle_buffer)
-        return iter(it)
-
-
-# ── Message builder ───────────────────────────────────────────────────────────
-def _build_messages(ex: dict) -> list[dict]:
-    """
-    Build the chat message for one example.
-    History screens shown first, current screen last.
-    """
-    content = []
-
-    for j, h_img in enumerate(ex["history"]):
-        content += [
-            {"type": "text",  "text": f"Earlier screen {j + 1}:"},
-            {"type": "image", "image": h_img},
-        ]
-
-    content += [
-        {"type": "text",  "text": "Current screen:"},
-        {"type": "image", "image": ex["image"]},
-        {
-            "type": "text",
-            "text": (
-                f"Task: {ex['goal']}\n"
-                "Estimate how long the user pauses on this screen."
+    @classmethod
+    def from_dict(cls, d: dict) -> Step:
+        attrs = d.get("attributes")
+        attrs_data = attrs.get("data") if isinstance(attrs, dict) else None
+        node = attrs_data.get("node") if isinstance(attrs_data, dict) else None
+        return cls(
+            id=d.get("id"),
+            type=d.get("type"),
+            tab_id=_as_int(d.get("tabId")),
+            host=d.get("host"),
+            href=d.get("href"),
+            img=d.get("img"),
+            html=d.get("html"),
+            ax_tree=d.get("axTree"),
+            created_time=_as_int(d.get("createdTime")),
+            rect=d.get("rect") if isinstance(d.get("rect"), dict) else None,
+            viewport=(
+                d.get("viewport") if isinstance(d.get("viewport"), dict) else None
             ),
+            scroll_x=d.get("scrollX"),
+            scroll_y=d.get("scrollY"),
+            value=d.get("value"),
+            title=d.get("title"),
+            node=node if isinstance(node, dict) else None,
+        )
+
+    @property
+    def is_launch_app(self) -> bool:
+        return (self.type or "").lower() == "launchapp"
+
+    @property
+    def img_is_url(self) -> bool:
+        return isinstance(self.img, str) and self.img.startswith(
+            ("https://", "http://")
+        )
+
+
+@dataclass
+class Trajectory:
+    id: str | None = None
+    title: str | None = None
+    created_at: int | None = None      # JSON: createdAt
+    steps: list[Step] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Trajectory:
+        return cls(
+            id=d.get("id") or d.get("trajectory_id"),
+            title=d.get("title") or d.get("instruction"),
+            created_at=_as_int(d.get("createdAt")),
+            steps=[Step.from_dict(s) for s in d.get("steps") or []
+                   if isinstance(s, dict)],
+        )
+
+
+def _iter_json_objects(path: Path) -> Iterator[dict]:
+    """Yield dicts from one file: JSONL, a JSON array, or a single object."""
+    with open(path) as fh:
+        first = fh.read(1)
+        fh.seek(0)
+        if first == "[":                      # one JSON array
+            try:
+                for obj in json.load(fh):
+                    if isinstance(obj, dict):
+                        yield obj
+            except json.JSONDecodeError:
+                return
+            return
+        try:                                  # JSONL (one object per line)
+            for line in fh:
+                if line.strip():
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        yield obj
+            return
+        except json.JSONDecodeError:
+            fh.seek(0)
+        try:                                  # single JSON object
+            obj = json.load(fh)
+            if isinstance(obj, dict):
+                yield obj
+        except json.JSONDecodeError:
+            return
+
+
+def iter_raw_trajectories(path: str | Path) -> Iterator[Trajectory]:
+    """
+    Stream typed trajectories from `path`: either a single JSON/JSONL file or a
+    directory containing many of them (searched recursively, sorted for
+    deterministic order). Objects without any steps are skipped.
+    """
+    path = Path(path)
+    files = (
+        sorted(path.glob("**/*.json")) + sorted(path.glob("**/*.jsonl"))
+        if path.is_dir() else [path]
+    )
+    for f in files:
+        for obj in _iter_json_objects(f):
+            if obj.get("steps"):
+                yield Trajectory.from_dict(obj)
+
+
+# ── Raw-data audit ────────────────────────────────────────────────────────────
+
+def _pct(n: int, total: int) -> float:
+    return round(100.0 * n / total, 2) if total else 0.0
+
+
+def audit_raw(trajectories: Iterable[Trajectory]) -> dict:
+    """
+    Compute descriptive stats over raw trajectories BEFORE trusting the data.
+    Returns a JSON-serializable dict (see write_raw_audit for the markdown).
+    """
+    n_traj = 0
+    n_steps = 0
+    type_counts: Counter[str] = Counter()
+    n_with_created = 0
+    n_img_url = 0
+    n_img_hash = 0
+    n_img_missing = 0
+    n_axtree = 0
+    steps_per_traj: list[int] = []
+    ident_runs = 0          # consecutive same-img+same-tab runs (len >= 2)
+    ident_run_steps = 0     # actionable steps absorbed into those runs
+
+    for traj in trajectories:
+        n_traj += 1
+        steps_per_traj.append(len(traj.steps))
+        for s in traj.steps:
+            n_steps += 1
+            type_counts[s.type or "<missing>"] += 1
+            if s.created_time is not None:
+                n_with_created += 1
+            if s.img_is_url:
+                n_img_url += 1
+            elif s.img:
+                n_img_hash += 1
+            else:
+                n_img_missing += 1
+            if s.ax_tree:
+                n_axtree += 1
+
+        # merge-eligible runs among actionable (non-launchApp) steps
+        actionable = [s for s in traj.steps if not s.is_launch_app]
+        run_len = 1
+        for prev, cur in zip(actionable, actionable[1:]):
+            if cur.img and cur.img == prev.img and cur.tab_id == prev.tab_id:
+                run_len += 1
+            else:
+                if run_len >= 2:
+                    ident_runs += 1
+                    ident_run_steps += run_len
+                run_len = 1
+        if run_len >= 2:
+            ident_runs += 1
+            ident_run_steps += run_len
+
+    spt = np.array(steps_per_traj) if steps_per_traj else np.array([0])
+    return {
+        "n_trajectories": n_traj,
+        "n_steps": n_steps,
+        "step_type_counts": dict(type_counts.most_common()),
+        "pct_steps_with_created_time": _pct(n_with_created, n_steps),
+        "img": {
+            "pct_http_url": _pct(n_img_url, n_steps),
+            "pct_opaque_hash": _pct(n_img_hash, n_steps),
+            "pct_missing": _pct(n_img_missing, n_steps),
         },
+        "pct_axtree_present": _pct(n_axtree, n_steps),
+        "steps_per_trajectory": {
+            "min": int(spt.min()),
+            "p25": float(np.percentile(spt, 25)),
+            "median": float(np.median(spt)),
+            "p90": float(np.percentile(spt, 90)),
+            "p99": float(np.percentile(spt, 99)),
+            "max": int(spt.max()),
+            "mean": round(float(spt.mean()), 2),
+        },
+        "consecutive_identical_img_runs": {
+            "n_runs": ident_runs,
+            "n_steps_in_runs": ident_run_steps,
+        },
+    }
+
+
+def write_raw_audit(stats: dict, out_path: str | Path) -> None:
+    """Render audit stats as markdown (plus the raw dict as fenced JSON)."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img, spt = stats["img"], stats["steps_per_trajectory"]
+    runs = stats["consecutive_identical_img_runs"]
+    lines = [
+        "# Raw WebChain audit",
+        "",
+        f"- Trajectories: **{stats['n_trajectories']}**",
+        f"- Steps: **{stats['n_steps']}**",
+        f"- Steps with `createdTime`: **{stats['pct_steps_with_created_time']}%**",
+        f"- `img` is http(s) URL: **{img['pct_http_url']}%** · opaque hash: "
+        f"**{img['pct_opaque_hash']}%** · missing: **{img['pct_missing']}%**",
+        f"- `axTree` present: **{stats['pct_axtree_present']}%**",
+        f"- Steps/trajectory: min {spt['min']} · p25 {spt['p25']} · median "
+        f"{spt['median']} · p90 {spt['p90']} · p99 {spt['p99']} · max {spt['max']}"
+        f" · mean {spt['mean']}",
+        f"- Consecutive identical-img (same tab) runs ≥2: **{runs['n_runs']}** "
+        f"covering {runs['n_steps_in_runs']} steps",
+        "",
+        "## Step type counts",
+        "",
+    ]
+    lines += [
+        f"- `{t}`: {c}" for t, c in stats["step_type_counts"].items()
+    ]
+    lines += ["", "## Raw stats (JSON)", "", "```json",
+              json.dumps(stats, indent=2), "```", ""]
+    out_path.write_text("\n".join(lines))
+
+# ── Path-A SFT chat examples (VLM emits `dwell_seconds: X.X`) ─────────────────
+# Prompt text is part of the label SPEC (CLAUDE.md), not a tunable knob — it
+# stays here. Everything numeric (pixel bounds, flags) comes from configs/*.yaml.
+
+SYSTEM_PROMPT = (
+    "You estimate how many seconds a user spends on this screen before their "
+    "next action. Reply with exactly: dwell_seconds: <number to 1 dp>"
+)
+
+# Exactly what the model is trained to emit — anything else is a parse failure.
+DWELL_OUTPUT_RE = re.compile(r"^\s*dwell_seconds:\s*([0-9]+(?:\.[0-9]+)?)\s*$")
+
+
+def format_dwell_target(dwell_s: float, winsor_cap: float) -> str:
+    """Assistant turn: dwell clipped to the winsor range [0, cap], 1 decimal.
+    `dwell_s` in rows_final is already winsorized — the clip is a guarantee,
+    not a second winsorization."""
+    return f"dwell_seconds: {min(max(dwell_s, 0.0), winsor_cap):.1f}"
+
+
+def parse_dwell_output(text: str | None) -> float | None:
+    """Inverse of format_dwell_target. None ⇒ the output did not parse."""
+    m = DWELL_OUTPUT_RE.match(text or "")
+    return float(m.group(1)) if m else None
+
+
+# Lenient tiers for EVALUATION decoding (training hooks stay strict):
+# a real prediction buried in sloppy formatting should count as a prediction,
+# not silently become an imputed median.
+_DWELL_LABELED_RE = re.compile(
+    r"dwell[_\s]?seconds?\s*[:=]?\s*(-?[0-9]+(?:\.[0-9]+)?)", re.IGNORECASE
+)
+_NUMBER_RE = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
+
+PARSE_TIERS = ("strict", "labeled", "bare_number", "fail")
+
+
+def parse_dwell_output_lenient(text: str | None) -> tuple[float | None, str]:
+    """
+    Robust eval-time parser. Returns (seconds | None, tier):
+
+      strict      — exactly the trained format (`dwell_seconds: X.X`)
+      labeled     — a `dwell_seconds`-labeled number anywhere in the text
+      bare_number — no label; first number in the text
+      fail        — nothing usable (incl. negative values: dwell is never < 0)
+
+    Tier counts are reported by the eval entrypoint — failures are imputed
+    (train median) and NEVER hidden.
+    """
+    v = parse_dwell_output(text)
+    if v is not None:
+        return v, "strict"
+    for regex, tier in ((_DWELL_LABELED_RE, "labeled"),
+                        (_NUMBER_RE, "bare_number")):
+        m = regex.search(text or "")
+        if m:
+            v = float(m.group(1) if regex.groups else m.group(0))
+            return (v, tier) if v >= 0 else (None, "fail")
+    return None, "fail"
+
+
+def _vlm_messages(
+    image: Image.Image,
+    task_title: str | None,
+    target_text: str,
+    include_task_title: bool,
+) -> list[dict]:
+    """One chat example in the format UnslothVisionDataCollator expects."""
+    user_content: list[dict] = [{"type": "image", "image": image}]
+    if include_task_title and task_title:
+        user_content.append({"type": "text", "text": f"Task: {task_title}"})
+    return [
+        {"role": "system",
+         "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
+        {"role": "user", "content": user_content},
+        {"role": "assistant",
+         "content": [{"type": "text", "text": target_text}]},
     ]
 
-    return [{"role": "user", "content": content}]
 
-
-# ── Collate ───────────────────────────────────────────────────────────────────
-def _collate(processor):
-    """Returns a collate_fn that uses the given processor."""
-    def collate(batch: list[dict]) -> dict:
-        x = processor.apply_chat_template(
-            [_build_messages(e) for e in batch],
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
-            padding=True,
-        )
-        x.pop("token_type_ids", None)
-
-        # Regression target
-        x["target"] = torch.tensor(
-            [e["target"] for e in batch], dtype=torch.float32
-        )
-        # Auxiliary TaskSense signal (used in loss or as extra input feature)
-        x["tasksense"] = torch.tensor(
-            [e["tasksense"] for e in batch], dtype=torch.float32
-        )
-        # Task progress (0→1)
-        x["step_frac"] = torch.tensor(
-            [e["step_frac"] for e in batch], dtype=torch.float32
-        )
-        return x
-    return collate
-
-
-# ── Public API ────────────────────────────────────────────────────────────────
-def get_dataloader(
-    processor,
-    split:       str  = "train",
-    dataset_dir: str  = DATASET_DIR,
-    use_history: bool = True,
-    batch_size:  int  = 2,
-    num_workers: int  = 4,
-    max_chunks:  int | None = None,
-) -> DataLoader:
+def build_vlm_examples(
+    df: pd.DataFrame,
+    *,
+    winsor_cap: float,
+    max_side: int,
+    min_pixels: int,
+    max_pixels: int,
+    include_task_title: bool = False,
+) -> list[dict]:
     """
-    Build a DataLoader for one split.
+    Rows → list of {"messages": [...], "dwell_s": float, "is_navigation": bool}.
 
-    Args:
-        processor   : HuggingFace processor for the VLM
-        split       : "train", "val", or "test"
-        dataset_dir : path to build_parquets.py output
-        use_history : include previous screenshots (False = ablation baseline)
-        batch_size  : examples per batch
-        num_workers : DataLoader worker processes. >0 runs image decode +
-                      processor tokenization in parallel subprocesses so the
-                      GPU never waits on CPU data prep. Set to ~CPU core count
-                      (4-8 is usually plenty). 0 = main process (slow).
-        max_chunks  : limit chunks for quick smoke tests
+    - Only rows with a locally resolved screenshot are used (img_resolved).
+    - Images are loaded eagerly as downscaled PIL (bounded visual tokens).
+    - Built with a LIST COMPREHENSION, not datasets.map(): keeping PIL images
+      in plain Python dicts avoids Arrow image-type conversion issues.
+    - DEFAULT is screen-only (no task title) — the research question is how
+      much dwell is recoverable from the screen alone. include_task_title=True
+      is the ablation.
+
+    The extra keys (dwell_s, is_navigation) are ignored by the collator and
+    used by the val decode hook / evaluation.
     """
-    ds = WebChainToT(
-        split=split,
-        dataset_dir=dataset_dir,
-        use_history=use_history,
-        shuffle_buffer=512 if split == "train" else 1,
-        max_chunks=max_chunks,
-    )
-    return DataLoader(
-        ds,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        collate_fn=_collate(processor),
-        pin_memory=True,                                 # faster CPU→GPU copy
-        prefetch_factor=2 if num_workers > 0 else None,  # stage batches ahead
-        persistent_workers=num_workers > 0,              # don't respawn each epoch
-    )
+    rows = df[df["img_resolved"] & df["img_path"].notna()]
+    return [
+        {
+            "messages": _vlm_messages(
+                load_image(
+                    r.img_path,
+                    max_side=max_side,
+                    min_pixels=min_pixels,
+                    max_pixels=max_pixels,
+                ),
+                getattr(r, "task_title", None),
+                format_dwell_target(float(r.dwell_s), winsor_cap),
+                include_task_title,
+            ),
+            "dwell_s": float(r.dwell_s),
+            "is_navigation": bool(r.is_navigation),
+        }
+        for r in rows.itertuples(index=False)
+    ]
+
+
+def build_inference_examples(
+    img_paths: list[str],
+    *,
+    max_side: int,
+    min_pixels: int,
+    max_pixels: int,
+) -> list[dict]:
+    """
+    Prompt-only chat examples (no gold turn) for arbitrary screenshots —
+    e.g. zero-shot external validation. Same system prompt and screen-only
+    user turn as training, so the frozen model sees exactly the format it
+    was tuned on.
+    """
+    return [
+        {
+            "messages": _vlm_messages(
+                load_image(
+                    p,
+                    max_side=max_side,
+                    min_pixels=min_pixels,
+                    max_pixels=max_pixels,
+                ),
+                None, "", include_task_title=False,
+            )[:-1],   # drop the (empty) assistant turn: prompt only
+        }
+        for p in img_paths
+    ]

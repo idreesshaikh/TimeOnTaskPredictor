@@ -1,121 +1,97 @@
 """
 totvlm/scoring.py
 =================
-Structural difficulty score in the spirit of TaskSense (Yin et al., 2025).
+Shared evaluation metrics for every dwell-time model (baseline, VLM, floors):
+`regression_metrics`, `metrics_by_navigation`, `calibration_table`.
+All model comparisons MUST go through these so numbers are comparable.
 
-Used in build_parquets.py to pre-compute tasksense_ms for each step.
-NOT called at inference — the VLM learns to predict difficulty from pixels.
-
-Formula per step:
-    tasksense_ms = base(operation) + find_weight * log(n_interactive + 1) + motor
-
-The log(n+1) term (Hick/Hyman-style) captures diminishing cost: going from
-2→4 options hurts more than 40→42. The +1 keeps it defined when n=0.
-
-Source: TaskSense Table 3 fitted base difficulties (ms).
+Convention: predictions/targets arrive in LOG space, y = log1p(dwell_s);
+seconds-space metrics use expm1.
 """
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+import numpy as np
+import pandas as pd
 
+# ── Shared regression metrics (log-space targets, y = log1p(dwell_s)) ─────────
 
-# ── Fitted base difficulties (ms) — TaskSense Table 3 ────────────────────────
-BASE_MS: dict[str, float] = {
-    "compute":          5120.0,   # mental calculation / comparison
-    "decide_implicit":  1506.0,   # unstated choice the user must infer
-    "create":           1422.0,   # composing new content (typing)
-    "extract":          1416.0,   # pulling a specific value from the page
-    "verify":            778.0,   # confirming something is correct
-    "decide_explicit":   742.0,   # choosing among visible options
-    "find":              563.0,   # locating a target (scales with element count)
-    "recall":            447.0,   # remembering something from earlier
-    "orient":              5.0,   # getting bearings on a fresh screen
-}
-
-MOTOR_MS: float = 859.0   # baseline motor cost even for trivial steps
-
-# ── Action → cognitive operation ──────────────────────────────────────────────
-# Revisit with the full WebChain action vocabulary.
-# Document changes here — this mapping directly affects your training signal.
-ACTION_TO_OP: dict[str, str] = {
-    "click":      "decide_explicit",
-    "dblclick":   "decide_explicit",
-    "tap":        "decide_explicit",
-    "select":     "decide_explicit",
-    "choose":     "decide_explicit",
-    "type":       "create",
-    "input":      "create",
-    "fill":       "create",
-    "scroll":     "find",
-    "swipe":      "find",
-    "search":     "find",
-    "hover":      "orient",
-    "navigate":   "orient",
-    "goto":       "orient",
-    "launchapp":  "orient",
-    "submit":     "verify",
-    "drag":       "compute",
-    "drop":       "compute",
-}
-DEFAULT_OP = "decide_explicit"
-
-
-# ── Result dataclass ──────────────────────────────────────────────────────────
-@dataclass
-class DifficultyBreakdown:
+def regression_metrics(y_true_log, y_pred_log) -> dict[str, float]:
     """
-    Score plus components — keep all parts for debugging.
+    MAE/RMSE in log space AND seconds (via expm1), plus Spearman rho.
 
-    Log components (not just total) so you can see what the model
-    is actually learning from during training.
+    Spearman is computed once — it is rank-based, so it is identical in log
+    and seconds space (expm1 is monotone).
     """
-    operation:    str
-    base_ms:      float
-    find_term_ms: float   # find_weight * log(n + 1)
-    motor_ms:     float
-    total_ms:     float
+    yt = np.asarray(y_true_log, dtype=float)
+    yp = np.asarray(y_pred_log, dtype=float)
+    if yt.shape != yp.shape:
+        raise ValueError(f"shape mismatch: {yt.shape} vs {yp.shape}")
+    if yt.size == 0:
+        return {"n": 0}
 
-    @property
-    def score(self) -> float:
-        """Difficulty in seconds (stored in parquet as tasksense_ms / 1000)."""
-        return self.total_ms / 1000.0
+    err_log = yp - yt
+    yt_s, yp_s = np.expm1(yt), np.expm1(yp)
+    err_s = yp_s - yt_s
+
+    if yt.size >= 2 and np.std(yt) > 0 and np.std(yp) > 0:
+        rho = float(pd.Series(yt).corr(pd.Series(yp), method="spearman"))
+    else:
+        rho = float("nan")
+
+    return {
+        "n": int(yt.size),
+        "mae_log": float(np.mean(np.abs(err_log))),
+        "rmse_log": float(np.sqrt(np.mean(err_log**2))),
+        "mae_s": float(np.mean(np.abs(err_s))),
+        "rmse_s": float(np.sqrt(np.mean(err_s**2))),
+        "spearman_rho": rho,
+        "mean_actual_s": float(np.mean(yt_s)),
+        "mean_pred_s": float(np.mean(yp_s)),
+    }
 
 
-# ── Main function ─────────────────────────────────────────────────────────────
-def tasksense_difficulty(
-    action_type:   str | None,
-    n_interactive: int,
-) -> DifficultyBreakdown:
+def metrics_by_navigation(
+    y_true_log, y_pred_log, is_navigation
+) -> dict[str, dict[str, float]]:
+    """`regression_metrics` overall + split by is_navigation (nav = URL change
+    with page load bundled in; in_page = cleaner cognitive signal)."""
+    yt = np.asarray(y_true_log, dtype=float)
+    yp = np.asarray(y_pred_log, dtype=float)
+    nav = np.asarray(is_navigation, dtype=bool)
+    if not (yt.shape == yp.shape == nav.shape):
+        raise ValueError("y_true, y_pred, is_navigation must align")
+    return {
+        "overall": regression_metrics(yt, yp),
+        "navigation": regression_metrics(yt[nav], yp[nav]),
+        "in_page": regression_metrics(yt[~nav], yp[~nav]),
+    }
+
+
+def calibration_table(
+    y_true_log, y_pred_log, n_bins: int = 10
+) -> tuple[pd.DataFrame, float]:
     """
-    Estimate structural difficulty for one step.
+    Decile-bin rows by PREDICTION (log space); per bin report mean predicted
+    vs mean actual seconds. Returns (table, ece):
 
-    Parameters
-    ----------
-    action_type
-        Action the user took (click / type / scroll / navigate / …).
-    n_interactive
-        Number of interactive elements on screen (buttons, links, inputs, …).
-        Comes from counting AX tree nodes with interactive roles.
+      ece = Σ (n_bin / N) · |mean_pred_s − mean_actual_s|
 
-    Returns
-    -------
-    DifficultyBreakdown
-        .total_ms  : full score in milliseconds
-        .score     : same, in seconds
-        .operation : which cognitive operation was inferred
-        .find_term_ms, .base_ms, .motor_ms : individual components
+    an ECE-style weighted absolute gap in seconds. Ties in predictions can
+    collapse bins (duplicates dropped) — the table's `bin` column is the
+    surviving bin index.
     """
-    op         = ACTION_TO_OP.get((action_type or "").lower(), DEFAULT_OP)
-    base       = BASE_MS[op]
-    n          = max(0, int(n_interactive))
-    find_term  = BASE_MS["find"] * math.log(n + 1)
-    total      = base + find_term + MOTOR_MS
-
-    return DifficultyBreakdown(
-        operation    = op,
-        base_ms      = base,
-        find_term_ms = find_term,
-        motor_ms     = MOTOR_MS,
-        total_ms     = total,
+    yt = np.asarray(y_true_log, dtype=float)
+    yp = np.asarray(y_pred_log, dtype=float)
+    df = pd.DataFrame({"actual_s": np.expm1(yt), "pred_s": np.expm1(yp)})
+    df["bin"] = pd.qcut(pd.Series(yp).rank(method="first"),
+                        q=min(n_bins, len(df)), labels=False)
+    table = (
+        df.groupby("bin")
+        .agg(n=("pred_s", "size"),
+             mean_pred_s=("pred_s", "mean"),
+             mean_actual_s=("actual_s", "mean"))
+        .reset_index()
     )
+    table["gap_s"] = (table["mean_pred_s"] - table["mean_actual_s"]).abs()
+    ece = float((table["n"] / len(df) * table["gap_s"]).sum())
+    return table, ece

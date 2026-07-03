@@ -1,0 +1,41 @@
+# No-image LightGBM baseline (CLAUDE.md: all tunable numbers live here).
+seed: 42
+
+paths:
+  rows_final: data/processed/rows_final.parquet
+  features_parquet: data/processed/baseline_features.parquet
+  report: artifacts/baseline_report.md
+  model_out: artifacts/baseline_lgbm.txt
+
+features:
+  # AX trees average ~1.2 MB each; fetching all ~182k (~210 GB) is infeasible.
+  # We fetch trees for a seeded PREFIX-STABLE sample of rows (smaller samples
+  # are prefixes of larger ones, so the on-disk feature cache is always reused)
+  # and cache only the extracted feature vector, never the tree.
+  sample_rows: 20000
+  axtree_cache_dir: data/axtree_features_cache
+  concurrency: 16
+  timeout_s: 20
+  max_tree_depth: 80         # recursion guard when walking a tree
+  action_vocab:              # one-hot vocabulary; anything else -> "other"
+    - click
+    - hover
+    - drag
+    - press_enter
+    - double_click
+    - type
+    - select
+
+lightgbm:
+  objective: regression
+  n_estimators: 2000
+  learning_rate: 0.05
+  num_leaves: 63
+  min_child_samples: 20
+  feature_fraction: 0.9
+  bagging_fraction: 0.9
+  bagging_freq: 1
+  verbosity: -1
+
+early_stopping_rounds: 100   # on VAL l1 (MAE in log space)
+calibration_bins: 10
