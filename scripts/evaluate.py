@@ -40,6 +40,7 @@ so the comparison stays apples-to-apples. This evaluates the internal TEST
 split only — the read-only external validation set is untouched (see
 scripts/validate_external.py).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,11 +80,14 @@ SUBSETS = ("overall", "navigation", "in_page")
 
 # ── Shared data selection ─────────────────────────────────────────────────────
 
+
 def eval_rows(df: pd.DataFrame) -> pd.DataFrame:
     """TEST rows the VLM can score: resolved screenshot, stable order."""
-    return df[(df["split"] == "test") & df["img_resolved"]].sort_values(
-        KEY, kind="mergesort"
-    ).reset_index(drop=True)
+    return (
+        df[(df["split"] == "test") & df["img_resolved"]]
+        .sort_values(KEY, kind="mergesort")
+        .reset_index(drop=True)
+    )
 
 
 def winsor_cap_from_train(df: pd.DataFrame) -> float:
@@ -93,21 +97,27 @@ def winsor_cap_from_train(df: pd.DataFrame) -> float:
 
 # ── Stage 1: GPU prediction (cached, one cache per VLM condition) ─────────────
 
-def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
-                winsor_cap: float, mcfg: dict) -> None:
+
+def run_predict(
+    cfg: dict, vcfg: dict, rows: pd.DataFrame, winsor_cap: float, mcfg: dict
+) -> None:
     import torch
 
     from totvlm.model import load_vlm_for_inference, predict_dwell_batch
 
     if not torch.cuda.is_available():
-        sys.exit("PREDICT stage needs a CUDA GPU (`uv sync --extra vlm`). "
-                 "Use --report-only to score whichever prediction caches "
-                 "already exist.")
+        sys.exit(
+            "PREDICT stage needs a CUDA GPU (`uv sync --extra vlm`). "
+            "Use --report-only to score whichever prediction caches "
+            "already exist."
+        )
 
     adapters = mcfg["adapters"]
     if not Path(adapters).exists():
-        sys.exit(f"No trained adapters at {adapters} for {mcfg['name']!r} — "
-                 f"run totvlm.train with its config first.")
+        sys.exit(
+            f"No trained adapters at {adapters} for {mcfg['name']!r} — "
+            f"run totvlm.train with its config first."
+        )
 
     log.info(f"[{mcfg['name']}] loading adapters from {adapters}")
     model, processor = load_vlm_for_inference(
@@ -128,7 +138,9 @@ def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
 
     log.info(f"[{mcfg['name']}] decoding {len(examples)} TEST screens ...")
     raw = predict_dwell_batch(
-        model, processor, examples,
+        model,
+        processor,
+        examples,
         batch_size=cfg["predict"]["batch_size"],
         max_new_tokens=cfg["predict"]["max_new_tokens"],
     )
@@ -146,9 +158,15 @@ def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
 
 # ── Stage 2a: parse VLM outputs (fallback documented, rate reported) ──────────
 
-def parse_vlm_preds(rows: pd.DataFrame, preds: pd.DataFrame, *,
-                    winsor_cap: float, train_median_s: float,
-                    clip_to_winsor: bool) -> tuple[pd.DataFrame, dict]:
+
+def parse_vlm_preds(
+    rows: pd.DataFrame,
+    preds: pd.DataFrame,
+    *,
+    winsor_cap: float,
+    train_median_s: float,
+    clip_to_winsor: bool,
+) -> tuple[pd.DataFrame, dict]:
     """Join one condition's raw outputs onto eval rows; parse; impute
     failures. Returns (rows + vlm_pred_s/vlm_pred_log/parse_tier, stats).
     Left-merge preserves `rows` order, so pred columns align across
@@ -158,16 +176,17 @@ def parse_vlm_preds(rows: pd.DataFrame, preds: pd.DataFrame, *,
     if n_missing:
         raise SystemExit(
             f"{n_missing} eval rows have no cached prediction — the preds "
-            f"cache is stale; rerun the PREDICT stage.")
+            f"cache is stale; rerun the PREDICT stage."
+        )
 
     parsed = [parse_dwell_output_lenient(t) for t in merged["raw_output"]]
     tiers = [t for _, t in parsed]
     values = []
     for v, _tier in parsed:
         if v is None:
-            v = train_median_s        # documented fallback: TRAIN median
+            v = train_median_s  # documented fallback: TRAIN median
         elif clip_to_winsor:
-            v = min(max(v, 0.0), winsor_cap)   # training-target range
+            v = min(max(v, 0.0), winsor_cap)  # training-target range
         values.append(v)
 
     merged["parse_tier"] = tiers
@@ -188,6 +207,7 @@ def parse_vlm_preds(rows: pd.DataFrame, preds: pd.DataFrame, *,
 
 # ── Stage 2b: baseline + floors on the same rows ──────────────────────────────
 
+
 def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
     """LightGBM predictions for eval rows whose axTree resolves.
     Returns rows[KEY] + lgbm_pred_log, one row per resolved axTree."""
@@ -200,8 +220,10 @@ def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
     )
 
     fcfg = bcfg["features"]
-    log.info(f"fetching axTree features for {len(rows)} eval rows "
-             f"(resumable cache: {fcfg['axtree_cache_dir']})")
+    log.info(
+        f"fetching axTree features for {len(rows)} eval rows "
+        f"(resumable cache: {fcfg['axtree_cache_dir']})"
+    )
     feats = fetch_axtree_features(
         rows["axtree_ref"],
         cache_dir=fcfg["axtree_cache_dir"],
@@ -213,8 +235,10 @@ def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
     frame = build_feature_frame(rows, feats, vocab)
     n_failed = int((~frame["ax_resolved"]).sum())
     frame = frame[frame["ax_resolved"]]
-    log.info(f"axTree resolved for {len(frame)}/{len(rows)} rows "
-             f"({n_failed} fetch/parse failures excluded from baseline)")
+    log.info(
+        f"axTree resolved for {len(frame)}/{len(rows)} rows "
+        f"({n_failed} fetch/parse failures excluded from baseline)"
+    )
 
     booster = lgb.Booster(model_file=cfg["paths"]["baseline_model"])
     out = frame[KEY].copy()
@@ -224,13 +248,14 @@ def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
 
 # ── Report pieces ─────────────────────────────────────────────────────────────
 
-def metrics_table(models: dict[str, np.ndarray], y: np.ndarray,
-                  nav: np.ndarray) -> tuple[list[str], dict]:
+
+def metrics_table(
+    models: dict[str, np.ndarray], y: np.ndarray, nav: np.ndarray
+) -> tuple[list[str], dict]:
     """One combined markdown table: model × subset rows. Returns (lines,
     {model: metrics_by_navigation dict})."""
     all_metrics = {
-        name: metrics_by_navigation(y, pred, nav)
-        for name, pred in models.items()
+        name: metrics_by_navigation(y, pred, nav) for name, pred in models.items()
     }
     lines = [
         "| model | subset | n | MAE (log) | RMSE (log) | MAE (s) | RMSE (s) "
@@ -241,8 +266,7 @@ def metrics_table(models: dict[str, np.ndarray], y: np.ndarray,
         for subset in SUBSETS:
             m = by_nav[subset]
             if m.get("n", 0) == 0:
-                lines.append(f"| {name} | {subset} | 0 | – | – | – | – | – "
-                             f"| – | – |")
+                lines.append(f"| {name} | {subset} | 0 | – | – | – | – | – | – | – |")
                 continue
             rho = m["spearman_rho"]
             lines.append(
@@ -255,8 +279,9 @@ def metrics_table(models: dict[str, np.ndarray], y: np.ndarray,
     return lines, all_metrics
 
 
-def task_level_table(models: dict[str, np.ndarray], traj_ids: np.ndarray,
-                     y: np.ndarray) -> tuple[list[str], dict]:
+def task_level_table(
+    models: dict[str, np.ndarray], traj_ids: np.ndarray, y: np.ndarray
+) -> tuple[list[str], dict]:
     """Per-task rollup (RQ v2): sum each model's predicted seconds within a
     trajectory, score against the summed actual — the KLM-successor claim
     ('predict how long the task takes'). Totals cover only evaluated steps,
@@ -329,8 +354,8 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
         "knowing the goal adds real predictive information on top of the "
         "pixels — the goal-driven share of dwell is nonzero and now "
         "quantified."
-        if d_all > 0 else
-        "the task title adds little or nothing on top of the pixels here — "
+        if d_all > 0
+        else "the task title adds little or nothing on top of the pixels here — "
         "on this corpus, the predictable share of dwell is carried by the "
         "screen itself."
     )
@@ -341,8 +366,7 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
     )
 
 
-def save_calibration_png(cal: pd.DataFrame, model_name: str,
-                         dest: Path) -> None:
+def save_calibration_png(cal: pd.DataFrame, model_name: str, dest: Path) -> None:
     """Decile reliability plot: mean predicted vs mean actual seconds."""
     import matplotlib
 
@@ -351,18 +375,29 @@ def save_calibration_png(cal: pd.DataFrame, model_name: str,
 
     fig, ax = plt.subplots(figsize=(5.5, 5.0), dpi=150)
     lim = 1.05 * max(cal["mean_pred_s"].max(), cal["mean_actual_s"].max())
-    ax.plot([0, lim], [0, lim], ls="--", lw=1, c="#9aa0a6",
-            label="perfect calibration", zorder=1)
-    ax.plot(cal["mean_pred_s"], cal["mean_actual_s"], c="#4059ad", lw=1.5,
-            zorder=2)
-    ax.scatter(cal["mean_pred_s"], cal["mean_actual_s"], s=28, c="#4059ad",
-               zorder=3, label="prediction decile")
+    ax.plot(
+        [0, lim],
+        [0, lim],
+        ls="--",
+        lw=1,
+        c="#9aa0a6",
+        label="perfect calibration",
+        zorder=1,
+    )
+    ax.plot(cal["mean_pred_s"], cal["mean_actual_s"], c="#4059ad", lw=1.5, zorder=2)
+    ax.scatter(
+        cal["mean_pred_s"],
+        cal["mean_actual_s"],
+        s=28,
+        c="#4059ad",
+        zorder=3,
+        label="prediction decile",
+    )
     ax.set_xlim(0, lim)
     ax.set_ylim(0, lim)
     ax.set_xlabel("mean predicted dwell (s)")
     ax.set_ylabel("mean actual dwell (s)")
-    ax.set_title(f"{model_name} calibration on TEST\n"
-                 "(decile bins by prediction)")
+    ax.set_title(f"{model_name} calibration on TEST\n(decile bins by prediction)")
     ax.legend(frameon=False, loc="upper left")
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
@@ -371,57 +406,80 @@ def save_calibration_png(cal: pd.DataFrame, model_name: str,
     plt.close(fig)
 
 
-def save_qualitative(rows: pd.DataFrame, n: int, banner_h: int,
-                     out_dir: Path, seed: int) -> list[dict]:
+def save_qualitative(
+    rows: pd.DataFrame, n: int, banner_h: int, out_dir: Path, seed: int
+) -> list[dict]:
     """Pick n screens spanning the error spectrum (best/median/worst thirds
     by |log error|), annotate pred vs actual above each screenshot."""
     from PIL import Image, ImageDraw, ImageFont
 
-    ranked = rows.assign(
-        abs_err_log=(rows["vlm_pred_log"] - rows["y"]).abs()
-    ).sort_values("abs_err_log", kind="mergesort").reset_index(drop=True)
+    ranked = (
+        rows.assign(abs_err_log=(rows["vlm_pred_log"] - rows["y"]).abs())
+        .sort_values("abs_err_log", kind="mergesort")
+        .reset_index(drop=True)
+    )
 
     k = n // 3
     mid = len(ranked) // 2
-    picks = pd.concat([
-        ranked.head(k).assign(bucket="best"),
-        ranked.iloc[mid - k // 2: mid - k // 2 + k].assign(bucket="median"),
-        ranked.tail(n - 2 * k).assign(bucket="worst"),
-    ])
+    picks = pd.concat(
+        [
+            ranked.head(k).assign(bucket="best"),
+            ranked.iloc[mid - k // 2 : mid - k // 2 + k].assign(bucket="median"),
+            ranked.tail(n - 2 * k).assign(bucket="worst"),
+        ]
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     font = ImageFont.load_default(size=16)
     entries = []
     for i, r in enumerate(picks.itertuples(index=False)):
         shot = Image.open(r.img_path).convert("RGB")
-        canvas = Image.new("RGB", (shot.width, shot.height + banner_h),
-                           "white")
+        canvas = Image.new("RGB", (shot.width, shot.height + banner_h), "white")
         canvas.paste(shot, (0, banner_h))
         caption = (
             f"[{r.bucket}] pred {r.vlm_pred_s:.1f} s · actual {r.dwell_s:.1f} s"
             f" · {'navigation' if r.is_navigation else 'in-page'}"
             f" · {r.trajectory_id}/{int(r.unit_index)}"
         )
-        ImageDraw.Draw(canvas).text((8, banner_h // 4), caption,
-                                    fill="black", font=font)
+        ImageDraw.Draw(canvas).text(
+            (8, banner_h // 4), caption, fill="black", font=font
+        )
         fname = f"{i:02d}_{r.bucket}_{r.trajectory_id}_{int(r.unit_index)}.png"
         canvas.save(out_dir / fname)
-        entries.append({
-            "file": fname, "bucket": r.bucket,
-            "pred_s": round(float(r.vlm_pred_s), 1),
-            "actual_s": round(float(r.dwell_s), 1),
-            "is_navigation": bool(r.is_navigation),
-            "raw_output": r.raw_output,
-        })
+        entries.append(
+            {
+                "file": fname,
+                "bucket": r.bucket,
+                "pred_s": round(float(r.vlm_pred_s), 1),
+                "actual_s": round(float(r.dwell_s), 1),
+                "is_navigation": bool(r.is_navigation),
+                "raw_output": r.raw_output,
+            }
+        )
     return entries
 
 
 # ── Stage 2: report ───────────────────────────────────────────────────────────
 
-def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
-               rows: pd.DataFrame, available: list[dict],
-               pending: list[str], cfg_path: str) -> None:
+
+def run_report(
+    cfg: dict,
+    bcfg: dict,
+    df: pd.DataFrame,
+    rows: pd.DataFrame,
+    available: list[dict],
+    pending: list[str],
+    cfg_path: str,
+) -> None:
     scfg = cfg["scoring"]
+    lcfg = cfg.get("logging", {"report_to": "none"})
+    run = None
+    if lcfg["report_to"] == "wandb":
+        import wandb
+
+        run = wandb.init(
+            project=lcfg["wandb_project"], name=lcfg["run_name"], config=cfg
+        )
     winsor_cap = winsor_cap_from_train(df)
     train_median_s = float(df.loc[df["split"] == "train", "dwell_s"].median())
 
@@ -430,7 +488,8 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
     vlm_stats: dict[str, dict] = {}
     for mcfg in available:
         frame, stats = parse_vlm_preds(
-            rows, pd.read_parquet(mcfg["preds"]),
+            rows,
+            pd.read_parquet(mcfg["preds"]),
             winsor_cap=winsor_cap,
             train_median_s=train_median_s,
             clip_to_winsor=scfg["clip_pred_to_winsor"],
@@ -441,8 +500,10 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
     primary_name = cfg["report"]["primary_model"]
     if primary_name not in vlm_frames:
         primary_name = available[0]["name"]
-        log.info(f"primary model not available — using {primary_name!r} for "
-                 f"calibration/qualitative")
+        log.info(
+            f"primary model not available — using {primary_name!r} for "
+            f"calibration/qualitative"
+        )
     primary = vlm_frames[primary_name]
 
     # Baseline on the same rows (subset where the axTree resolved)
@@ -453,47 +514,96 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
     # Floors: TRAIN mean/median of y, constant on every row (same recipe as
     # the baseline report)
     y_train = df.loc[df["split"] == "train", "y"].to_numpy()
-    floors = {"train-mean floor": float(np.mean(y_train)),
-              "train-median floor": float(np.median(y_train))}
+    floors = {
+        "train-mean floor": float(np.mean(y_train)),
+        "train-median floor": float(np.median(y_train)),
+    }
 
     # Head-to-head on identical rows: floors < LightGBM < VLM condition(s)
     y_c = common["y"].to_numpy()
     nav_c = common["is_navigation"].to_numpy()
-    models = {name: np.full_like(y_c, const)
-              for name, const in floors.items()}
+    models = {name: np.full_like(y_c, const) for name, const in floors.items()}
     models["LightGBM (no image)"] = common["lgbm_pred_log"].to_numpy()
     for name, frame in vlm_frames.items():
         models[name] = frame.loc[common_mask, "vlm_pred_log"].to_numpy()
     head_lines, head_metrics = metrics_table(models, y_c, nav_c)
 
-    # Task-level rollup on the same rows (RQ v2: whole-task Time-on-Task)
+    # Task-level rollup on the same rows (RQ v2: whole-task Time-on-Task).
+    # Only tasks with >= task_min_steps covered screens: singleton "tasks"
+    # (scattered legacy cache rows) are per-screen rows in disguise.
+    min_steps = scfg["task_min_steps"]
+    task_sizes = common.groupby("trajectory_id")["y"].transform("size")
+    t_mask = (task_sizes >= min_steps).to_numpy()
     task_lines, task_metrics = task_level_table(
-        models, common["trajectory_id"].to_numpy(), y_c)
-    steps_per_task = common.groupby("trajectory_id").size()
+        {name: pred[t_mask] for name, pred in models.items()},
+        common.loc[t_mask, "trajectory_id"].to_numpy(),
+        y_c[t_mask],
+    )
+    steps_per_task = common[t_mask].groupby("trajectory_id").size()
+    n_singleton_tasks = int((common.groupby("trajectory_id").size() < min_steps).sum())
 
     # VLM conditions on the FULL eval set (rows the baseline couldn't cover)
     y_f = rows["y"].to_numpy()
     nav_f = rows["is_navigation"].to_numpy()
     full_lines, _ = metrics_table(
-        {name: frame["vlm_pred_log"].to_numpy()
-         for name, frame in vlm_frames.items()}, y_f, nav_f)
+        {name: frame["vlm_pred_log"].to_numpy() for name, frame in vlm_frames.items()},
+        y_f,
+        nav_f,
+    )
 
     # Calibration + qualitative for the primary condition
-    cal, ece = calibration_table(y_f, primary["vlm_pred_log"].to_numpy(),
-                                 n_bins=scfg["calibration_bins"])
+    cal, ece = calibration_table(
+        y_f, primary["vlm_pred_log"].to_numpy(), n_bins=scfg["calibration_bins"]
+    )
     cal_png = Path(cfg["paths"]["calibration_png"])
     save_calibration_png(cal, primary_name, cal_png)
 
     qual_dir = Path(cfg["paths"]["qualitative_dir"])
-    qual = save_qualitative(primary, cfg["qualitative"]["n"],
-                            cfg["qualitative"]["banner_height"],
-                            qual_dir, cfg["seed"])
+    qual = save_qualitative(
+        primary,
+        cfg["qualitative"]["n"],
+        cfg["qualitative"]["banner_height"],
+        qual_dir,
+        cfg["seed"],
+    )
 
-    paragraphs = [edge_paragraph(head_metrics[primary_name],
-                                 head_metrics["LightGBM (no image)"])]
+    paragraphs = [
+        edge_paragraph(head_metrics[primary_name], head_metrics["LightGBM (no image)"])
+    ]
     if "VLM (screen)" in head_metrics and "VLM (screen+task)" in head_metrics:
-        paragraphs.append(goal_increment_paragraph(
-            head_metrics["VLM (screen)"], head_metrics["VLM (screen+task)"]))
+        paragraphs.append(
+            goal_increment_paragraph(
+                head_metrics["VLM (screen)"], head_metrics["VLM (screen+task)"]
+            )
+        )
+
+    # Machine-readable outputs: the metrics JSON and the per-row prediction
+    # matrix (head-to-head rows, one pred_log:<model> column per contestant)
+    # — scripts/make_figures.py regenerates every paper figure from these
+    # without re-running any model.
+    payload = {
+        "head_to_head_per_screen": head_metrics,
+        "task_level": task_metrics,
+        "parse_stats": vlm_stats,
+        "calibration_ece_s": ece,
+        "primary_model": primary_name,
+        "pending_models": pending,
+        "rows": {
+            "eval_set": len(rows),
+            "head_to_head": len(common),
+            "tasks": int(len(steps_per_task)),
+        },
+    }
+    metrics_json = Path(cfg["paths"]["metrics_json"])
+    metrics_json.parent.mkdir(parents=True, exist_ok=True)
+    metrics_json.write_text(json.dumps(payload, indent=2))
+
+    pred_frame = common[KEY + ["y", "dwell_s", "is_navigation"]].reset_index(drop=True)
+    for name, pred in models.items():
+        pred_frame[f"pred_log:{name}"] = pred
+    preds_out = Path(cfg["paths"]["predictions_parquet"])
+    pred_frame.to_parquet(preds_out, compression="zstd", index=False)
+    log.info(f"metrics JSON → {metrics_json} · prediction matrix → {preds_out}")
 
     lines = [
         "# Evaluation report — Time-on-Task on held-out TEST domains (O2)",
@@ -522,16 +632,19 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
             f"**{tc['labeled']}** · bare number **{tc['bare_number']}** · "
             f"failed **{tc['fail']}** — **failure rate "
             f"{stats['parse_failure_rate']:.2%}**, failures imputed with "
-            f"the {stats['fallback']}, never dropped")
+            f"the {stats['fallback']}, never dropped"
+        )
     first_stats = vlm_stats[primary_name]
     if first_stats["clipped_to"]:
         lines.append(
             f"- Parsed predictions clipped to {first_stats['clipped_to']} s "
-            f"(the training-target range)")
+            f"(the training-target range)"
+        )
     if pending:
         lines.append(
             f"- ⏳ Pending conditions (no prediction cache yet, NOT in the "
-            f"tables): {', '.join(pending)}")
+            f"tables): {', '.join(pending)}"
+        )
     lines += [
         "",
         "## Per-screen head-to-head (identical rows)",
@@ -544,7 +657,10 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
         "against the summed actual — the data-driven analogue of KLM's "
         "operator-sum. Totals cover only evaluated steps, identically for "
         "targets and every model, so the comparison is apples-to-apples "
-        "(covered-task time, not wall-clock task time).",
+        "(covered-task time, not wall-clock task time). "
+        f"Tasks with < {min_steps} covered screens are excluded "
+        f"({n_singleton_tasks} such tasks — scattered legacy-cache rows, "
+        "already counted in the per-screen tables).",
         "",
         *task_lines,
         "",
@@ -555,8 +671,7 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
         "## Where does the signal live? (O2 answer)",
         "",
         *[p + "\n" for p in paragraphs],
-        f"## Calibration ({primary_name}, full eval set, decile bins by "
-        "prediction)",
+        f"## Calibration ({primary_name}, full eval set, decile bins by prediction)",
         "",
         f"![calibration]({cal_png.name})",
         "",
@@ -564,57 +679,84 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
         "",
         "| bin | n | mean pred (s) | mean actual (s) | gap (s) |",
         "|---|---|---|---|---|",
-        *[f"| {int(r.bin)} | {int(r.n)} | {r.mean_pred_s:.2f} "
-          f"| {r.mean_actual_s:.2f} | {r.gap_s:.2f} |"
-          for r in cal.itertuples()],
+        *[
+            f"| {int(r.bin)} | {int(r.n)} | {r.mean_pred_s:.2f} "
+            f"| {r.mean_actual_s:.2f} | {r.gap_s:.2f} |"
+            for r in cal.itertuples()
+        ],
         "",
         f"## Qualitative examples ({primary_name}, `{qual_dir}/`)",
         "",
         "| file | bucket | pred (s) | actual (s) | step | raw output |",
         "|---|---|---|---|---|---|",
-        *[f"| {q['file']} | {q['bucket']} | {q['pred_s']} | {q['actual_s']} "
-          f"| {'navigation' if q['is_navigation'] else 'in-page'} "
-          f"| `{q['raw_output']}` |" for q in qual],
+        *[
+            f"| {q['file']} | {q['bucket']} | {q['pred_s']} | {q['actual_s']} "
+            f"| {'navigation' if q['is_navigation'] else 'in-page'} "
+            f"| `{q['raw_output']}` |"
+            for q in qual
+        ],
         "",
         "## Full metrics (JSON)",
         "",
         "```json",
-        json.dumps(
-            {
-                "head_to_head_per_screen": head_metrics,
-                "task_level": task_metrics,
-                "parse_stats": vlm_stats,
-                "calibration_ece_s": ece,
-                "primary_model": primary_name,
-                "pending_models": pending,
-                "rows": {"eval_set": len(rows),
-                         "head_to_head": len(common),
-                         "tasks": int(len(steps_per_task))},
-            },
-            indent=2,
-        ),
+        json.dumps(payload, indent=2),
         "```",
         "",
     ]
     report = Path(cfg["paths"]["report"])
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines))
-    log.info(f"report → {report} · calibration → {cal_png} · "
-             f"qualitative → {qual_dir}/")
-    log.info("per-screen MAE(log): " + json.dumps(
-        {m: head_metrics[m]["overall"]["mae_log"] for m in head_metrics}))
-    log.info("task-level MAE(log): " + json.dumps(
-        {m: task_metrics[m]["mae_log"] for m in task_metrics}))
+    log.info(f"report → {report} · calibration → {cal_png} · qualitative → {qual_dir}/")
+    log.info(
+        "per-screen MAE(log): "
+        + json.dumps({m: head_metrics[m]["overall"]["mae_log"] for m in head_metrics})
+    )
+    log.info(
+        "task-level MAE(log): "
+        + json.dumps({m: task_metrics[m]["mae_log"] for m in task_metrics})
+    )
+
+    if run is not None:
+        import wandb
+
+        wandb.log(
+            {
+                "calibration_ece_s": ece,
+                **{
+                    f"screen/{name}/{subset}/{k}": v
+                    for name, by_nav in head_metrics.items()
+                    for subset, m in by_nav.items()
+                    for k, v in m.items()
+                },
+                **{
+                    f"task/{name}/{k}": v
+                    for name, m in task_metrics.items()
+                    for k, v in m.items()
+                },
+                **{
+                    f"parse/{name}/failure_rate": s["parse_failure_rate"]
+                    for name, s in vlm_stats.items()
+                },
+            }
+        )
+        wandb.log({"calibration": wandb.Image(str(cal_png))})
+        for f in (report, metrics_json):
+            wandb.save(str(f))
+        wandb.finish()
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/eval.yaml")
     group = ap.add_mutually_exclusive_group()
-    group.add_argument("--predict-only", action="store_true",
-                       help="run the GPU decode stage(s) and stop")
-    group.add_argument("--report-only", action="store_true",
-                       help="fail rather than run the GPU stage")
+    group.add_argument(
+        "--predict-only",
+        action="store_true",
+        help="run the GPU decode stage(s) and stop",
+    )
+    group.add_argument(
+        "--report-only", action="store_true", help="fail rather than run the GPU stage"
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -630,23 +772,25 @@ def main() -> None:
     if not args.report_only:
         for mcfg in conditions:
             if Path(mcfg["preds"]).exists():
-                log.info(f"[{mcfg['name']}] using cached predictions: "
-                         f"{mcfg['preds']}")
+                log.info(f"[{mcfg['name']}] using cached predictions: {mcfg['preds']}")
             elif Path(mcfg["adapters"]).exists():
                 run_predict(cfg, vcfg, rows, winsor_cap_from_train(df), mcfg)
             else:
-                log.info(f"[{mcfg['name']}] no adapters yet at "
-                         f"{mcfg['adapters']} — skipping (will be listed as "
-                         f"pending)")
+                log.info(
+                    f"[{mcfg['name']}] no adapters yet at "
+                    f"{mcfg['adapters']} — skipping (will be listed as "
+                    f"pending)"
+                )
     if args.predict_only:
         return
 
     available = [m for m in conditions if Path(m["preds"]).exists()]
-    pending = [m["name"] for m in conditions
-               if not Path(m["preds"]).exists()]
+    pending = [m["name"] for m in conditions if not Path(m["preds"]).exists()]
     if not available:
-        sys.exit("No prediction caches exist for any configured VLM "
-                 "condition — run the PREDICT stage on a GPU machine first.")
+        sys.exit(
+            "No prediction caches exist for any configured VLM "
+            "condition — run the PREDICT stage on a GPU machine first."
+        )
 
     run_report(cfg, bcfg, df, rows, available, pending, args.config)
 

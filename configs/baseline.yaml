@@ -39,3 +39,8 @@ lightgbm:
 
 early_stopping_rounds: 100   # on VAL l1 (MAE in log space)
 calibration_bins: 10
+
+logging:
+  report_to: wandb           # "wandb" or "none" — same knob as configs/vlm*.yaml
+  wandb_project: tot-vlm
+  run_name: baseline-lgbm

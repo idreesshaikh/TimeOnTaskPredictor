@@ -7,16 +7,16 @@ authors = [
     { name="Idrees Razak", email="asadidrees.razak@student.hpi.de" }
 ]
 dependencies = [
-    "torch==2.5.1",
-    "torchvision==0.20.1",
-    "torchaudio==2.5.1",
-    "transformers==5.0.0rc1",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "torchaudio==2.8.0",
+    "transformers==5.5.0",
     "accelerate>=1.13.0",
-    "datasets>=3.4.1",   # floor only (unused in code): unsloth-zoo caps <4.4
+    "datasets>=3.4.1",
     "pillow>=12.2.0",
     "sentencepiece>=0.2.1",
     "safetensors>=0.8.0",
-    "peft>=0.16.0",   # floor only: unsloth (vlm extra) needs a newer peft
+    "peft>=0.16.0",
     "huggingface_hub>=0.14.1",
     "wandb>=0.27.2",
     "pandas-stubs~=3.0.3",
@@ -35,9 +35,7 @@ dependencies = [
 # CUDA-only training stack for totvlm.train (Unsloth QLoRA SFT).
 # Install with: uv sync --extra vlm
 vlm = [
-    # unsloth pins its own compatible trl (<=0.24) and transformers range;
-    # >=2025.10 is when Qwen3-VL vision support landed.
-    "unsloth>=2025.10 ; sys_platform == 'linux'",
+    "unsloth>=2025.10",
 ]
 
 [dependency-groups]

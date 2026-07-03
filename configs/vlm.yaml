@@ -27,7 +27,8 @@ data:
 
 train:
   learning_rate: 2.0e-4
-  num_epochs: 3
+  num_epochs: 2                     # ~87k resolved train screens at the 100k
+                                    # row budget — 2 passes ≈ 11k optim steps
   batch_size: 4                     # per-device micro-batch (verify memory fit
   grad_accum: 4                     #  with --dry-run first) → effective 16
   eval_batch_size: 4

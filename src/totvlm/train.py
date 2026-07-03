@@ -48,6 +48,7 @@ import numpy as np
 import pandas as pd
 import torch
 from transformers import TrainerCallback
+from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTConfig, SFTTrainer
 
 from totvlm.config import load_config
@@ -299,6 +300,11 @@ def main() -> None:
     tcfg = dict(cfg["train"])
     ecfg = dict(cfg["eval"])
     n_train_limit = n_val_limit = max_steps = None
+    # Dry runs get their own sandbox: never pollute the real checkpoint dir
+    # (auto-resume below would otherwise pick up a 12-step dry checkpoint)
+    # and never overwrite the full run's card.
+    out_dir = cfg["paths"]["output_dir"]
+    card_path = Path(cfg["paths"]["train_card"])
     if args.dry_run:
         d = cfg["dry_run"]
         n_train_limit, n_val_limit = d["n_train"], d["n_val"]
@@ -306,6 +312,9 @@ def main() -> None:
         tcfg["logging_steps"] = d["logging_steps"]
         tcfg["report_to"] = d["report_to"]
         ecfg["decode_samples"] = d["decode_samples"]
+        out_dir += "-dryrun"
+        card_path = card_path.with_name(
+            card_path.stem + "-dryrun" + card_path.suffix)
 
     # ── Data: rows_final → chat examples (train/val, img_resolved only) ──────
     df = pd.read_parquet(cfg["paths"]["rows_final"])
@@ -340,7 +349,6 @@ def main() -> None:
     print("3/4  Building trainer ...", flush=True)
     if tcfg["report_to"] == "wandb":
         os.environ.setdefault("WANDB_PROJECT", tcfg["wandb_project"])
-    out_dir = cfg["paths"]["output_dir"]
     sft_args = _make_sft_config(
         output_dir=out_dir,
         seed=seed,
@@ -384,10 +392,13 @@ def main() -> None:
         callbacks=[decode_cb],
     )
 
-    # ── Train ─────────────────────────────────────────────────────────────────
-    print("4/4  Training ...", flush=True)
+    # ── Train (auto-resume: a resubmitted/timed-out job continues from the
+    # last epoch checkpoint instead of restarting) ────────────────────────────
+    last_ckpt = get_last_checkpoint(out_dir) if Path(out_dir).is_dir() else None
+    print(f"4/4  {'Resuming from ' + last_ckpt if last_ckpt else 'Training'}"
+          " ...", flush=True)
     torch.cuda.reset_peak_memory_stats()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=last_ckpt)
 
     props = torch.cuda.get_device_properties(0)
     vram = {
@@ -411,13 +422,13 @@ def main() -> None:
         for h in trainer.state.log_history if "eval_loss" in h
     ]
     _write_train_card(
-        Path(cfg["paths"]["train_card"]),
+        card_path,
         cfg_path=args.config, cfg=cfg, dry_run=args.dry_run,
         n_train=len(train_ds), n_val=len(val_ds), winsor_cap=winsor_cap,
         tcfg=tcfg, train_losses=train_losses, eval_losses=eval_losses,
         decode_history=decode_cb.history, vram=vram, checkpoint_dir=out_dir,
     )
-    print(f"\nAdapters → {final_dir} · card → {cfg['paths']['train_card']}")
+    print(f"\nAdapters → {final_dir} · card → {card_path}")
 
     # ── Dry-run acceptance summary ────────────────────────────────────────────
     if args.dry_run and train_losses:

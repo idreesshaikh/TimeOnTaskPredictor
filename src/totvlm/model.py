@@ -158,6 +158,7 @@ def train_lgbm_baseline(
     y_val,
     params: dict,
     early_stopping_rounds: int,
+    extra_callbacks: list | None = None,
 ):
     """Fit LightGBM (native API — no scikit-learn dependency) with early
     stopping on the val split. Returns the Booster; its predict() uses the
@@ -179,6 +180,7 @@ def train_lgbm_baseline(
         callbacks=[
             lgb.early_stopping(early_stopping_rounds, verbose=False),
             lgb.log_evaluation(period=100),
+            *(extra_callbacks or []),
         ],
     )
     return booster
