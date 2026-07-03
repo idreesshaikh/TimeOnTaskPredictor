@@ -1,33 +1,44 @@
 """
 evaluate.py
 ===========
-TEST-split head-to-head (O2): does the screenshot VLM beat the no-image
-LightGBM baseline — and is its edge cognitive signal (in-page steps) or
-page-load latency (navigation steps)?
+TEST-split head-to-head (O2, RQ v2): how well is Time-on-Task predicted
+per screen AND per task — and how much of that predictability resides in
+the screen alone versus the user's stated task?
 
     uv run python scripts/evaluate.py [--config configs/eval.yaml]
                                       [--predict-only | --report-only]
 
+Contestants (configs/eval.yaml `vlm_models`, on identical rows):
+    floors < LightGBM (no image) < VLM (screen) < VLM (screen+task)
+The screen-only condition is the science core (what the screen alone
+predicts); screen+task is the deliverable predictor; their gap estimates
+the goal-driven share of dwell.
+
 Two stages, all knobs in configs/eval.yaml:
 
-1. PREDICT (CUDA GPU): load the trained adapters, batched greedy decode over
-   every TEST row with a resolved screenshot, cache RAW outputs to
-   artifacts/vlm_test_preds.parquet. Runs only when the cache is missing
-   (or with --predict-only). Re-running the report never re-runs the GPU.
+1. PREDICT (CUDA GPU): for each configured VLM condition whose raw-decode
+   cache is missing, load its adapters and batch-decode every TEST row with
+   a resolved screenshot. Re-running the report never re-runs the GPU.
 
 2. REPORT (CPU, any machine): parse raw outputs (lenient tiers; failures
    imputed with the TRAIN median and the rate reported — never hidden),
    reload the LightGBM baseline and score it on the SAME rows (axTree
    features fetched via the resumable cache), compute floors, and write:
-     - artifacts/eval_report.md   (head-to-head + nav breakdown + calibration)
+     - artifacts/eval_report.md   per-screen head-to-head + nav breakdown
+                                  + TASK-LEVEL rollup (per-trajectory sums —
+                                  the KLM-successor claim) + calibration
      - artifacts/calibration.png
      - artifacts/qualitative/     (6 annotated screenshots, pred vs actual)
+   Conditions whose cache is missing are listed as pending, never silently
+   skipped.
 
-Evaluation set = TEST rows with img_resolved. The head-to-head table uses
-the subset where the baseline's axTree also resolved, so every model is
-scored on identical rows; VLM-only metrics on the full set are reported too.
-This evaluates the internal TEST split only — the read-only external
-validation set is untouched (see scripts/validate_external.py).
+Evaluation set = TEST rows with img_resolved. The head-to-head uses the
+subset where the baseline's axTree also resolved, so every model is scored
+on identical rows; full-eval-set VLM metrics are reported too. Task-level
+totals sum ONLY covered steps — identically for targets and every model —
+so the comparison stays apples-to-apples. This evaluates the internal TEST
+split only — the read-only external validation set is untouched (see
+scripts/validate_external.py).
 """
 from __future__ import annotations
 
@@ -47,7 +58,12 @@ from totvlm.data import (
     build_vlm_examples,
     parse_dwell_output_lenient,
 )
-from totvlm.scoring import calibration_table, metrics_by_navigation
+from totvlm.scoring import (
+    calibration_table,
+    metrics_by_navigation,
+    regression_metrics,
+    task_totals,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,24 +91,25 @@ def winsor_cap_from_train(df: pd.DataFrame) -> float:
     return float(df.loc[df["split"] == "train", "dwell_s"].max())
 
 
-# ── Stage 1: GPU prediction (cached) ──────────────────────────────────────────
+# ── Stage 1: GPU prediction (cached, one cache per VLM condition) ─────────────
 
 def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
-                winsor_cap: float) -> None:
+                winsor_cap: float, mcfg: dict) -> None:
     import torch
 
     from totvlm.model import load_vlm_for_inference, predict_dwell_batch
 
     if not torch.cuda.is_available():
         sys.exit("PREDICT stage needs a CUDA GPU (`uv sync --extra vlm`). "
-                 "If artifacts/vlm_test_preds.parquet already exists, use "
-                 "--report-only.")
+                 "Use --report-only to score whichever prediction caches "
+                 "already exist.")
 
-    adapters = cfg["paths"]["adapters"]
+    adapters = mcfg["adapters"]
     if not Path(adapters).exists():
-        sys.exit(f"No trained adapters at {adapters} — run totvlm.train first.")
+        sys.exit(f"No trained adapters at {adapters} for {mcfg['name']!r} — "
+                 f"run totvlm.train with its config first.")
 
-    log.info(f"loading adapters from {adapters}")
+    log.info(f"[{mcfg['name']}] loading adapters from {adapters}")
     model, processor = load_vlm_for_inference(
         adapters,
         max_seq_length=vcfg["model"]["max_seq_length"],
@@ -105,11 +122,11 @@ def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
         max_side=img["max_side"],
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
-        include_task_title=vcfg["data"]["include_task_title"],
+        include_task_title=mcfg["include_task_title"],
     )
     assert len(examples) == len(rows)
 
-    log.info(f"decoding {len(examples)} TEST screens ...")
+    log.info(f"[{mcfg['name']}] decoding {len(examples)} TEST screens ...")
     raw = predict_dwell_batch(
         model, processor, examples,
         batch_size=cfg["predict"]["batch_size"],
@@ -118,10 +135,13 @@ def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
 
     out = rows[KEY].copy()
     out["raw_output"] = raw
-    dest = Path(cfg["paths"]["vlm_preds"])
+    dest = Path(mcfg["preds"])
     dest.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(dest, compression="zstd", index=False)
-    log.info(f"raw predictions → {dest}")
+    log.info(f"[{mcfg['name']}] raw predictions → {dest}")
+
+    del model
+    torch.cuda.empty_cache()
 
 
 # ── Stage 2a: parse VLM outputs (fallback documented, rate reported) ──────────
@@ -129,8 +149,10 @@ def run_predict(cfg: dict, vcfg: dict, rows: pd.DataFrame,
 def parse_vlm_preds(rows: pd.DataFrame, preds: pd.DataFrame, *,
                     winsor_cap: float, train_median_s: float,
                     clip_to_winsor: bool) -> tuple[pd.DataFrame, dict]:
-    """Join raw outputs onto eval rows; parse; impute failures.
-    Returns (rows + vlm_pred_s/vlm_pred_log/parse_tier, parse stats)."""
+    """Join one condition's raw outputs onto eval rows; parse; impute
+    failures. Returns (rows + vlm_pred_s/vlm_pred_log/parse_tier, stats).
+    Left-merge preserves `rows` order, so pred columns align across
+    conditions."""
     merged = rows.merge(preds, on=KEY, how="left", validate="1:1")
     n_missing = int(merged["raw_output"].isna().sum())
     if n_missing:
@@ -233,16 +255,43 @@ def metrics_table(models: dict[str, np.ndarray], y: np.ndarray,
     return lines, all_metrics
 
 
+def task_level_table(models: dict[str, np.ndarray], traj_ids: np.ndarray,
+                     y: np.ndarray) -> tuple[list[str], dict]:
+    """Per-task rollup (RQ v2): sum each model's predicted seconds within a
+    trajectory, score against the summed actual — the KLM-successor claim
+    ('predict how long the task takes'). Totals cover only evaluated steps,
+    identically for targets and every model."""
+    groups, y_task = task_totals(traj_ids, y)
+    lines = [
+        "| model | tasks | MAE (log) | RMSE (log) | MAE (s) | RMSE (s) "
+        "| Spearman ρ | mean actual s | mean pred s |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    all_metrics = {}
+    for name, pred in models.items():
+        _, p_task = task_totals(traj_ids, pred)
+        m = regression_metrics(y_task, p_task)
+        all_metrics[name] = m
+        rho = m["spearman_rho"]
+        lines.append(
+            f"| {name} | {m['n']} | {m['mae_log']:.4f} | {m['rmse_log']:.4f} "
+            f"| {m['mae_s']:.2f} | {m['rmse_s']:.2f} "
+            f"| {'–' if np.isnan(rho) else f'{rho:.4f}'} "
+            f"| {m['mean_actual_s']:.2f} | {m['mean_pred_s']:.2f} |"
+        )
+    return lines, all_metrics
+
+
 def edge_paragraph(vlm: dict, lgbm: dict) -> str:
-    """Where does the VLM's edge over LightGBM live — in-page (cognitive
-    signal) or navigation (page-load latency bundled into the dwell)?"""
+    """Where does the screen model's edge over LightGBM live — in-page
+    (cognitive signal) or navigation (page-load latency in the dwell)?"""
     d_in = lgbm["in_page"]["mae_log"] - vlm["in_page"]["mae_log"]
     d_nav = lgbm["navigation"]["mae_log"] - vlm["navigation"]["mae_log"]
     n_in, n_nav = vlm["in_page"]["n"], vlm["navigation"]["n"]
 
     where = (
-        f"On identical rows, the VLM's MAE(log) edge over LightGBM is "
-        f"**{d_in:+.4f} on in-page steps** (n={n_in}) and "
+        f"On identical rows, the screen model's MAE(log) edge over LightGBM "
+        f"is **{d_in:+.4f} on in-page steps** (n={n_in}) and "
         f"**{d_nav:+.4f} on navigation steps** (n={n_nav}); positive = VLM "
         f"better."
     )
@@ -270,7 +319,30 @@ def edge_paragraph(vlm: dict, lgbm: dict) -> str:
     return f"{where} {verdict}"
 
 
-def save_calibration_png(cal: pd.DataFrame, dest: Path) -> None:
+def goal_increment_paragraph(screen: dict, task: dict) -> str:
+    """RQ v2's second clause: how much does knowing the user's task add on
+    top of the screen? (screen vs screen+task, identical rows)."""
+    d_all = screen["overall"]["mae_log"] - task["overall"]["mae_log"]
+    d_in = screen["in_page"]["mae_log"] - task["in_page"]["mae_log"]
+    d_nav = screen["navigation"]["mae_log"] - task["navigation"]["mae_log"]
+    verdict = (
+        "knowing the goal adds real predictive information on top of the "
+        "pixels — the goal-driven share of dwell is nonzero and now "
+        "quantified."
+        if d_all > 0 else
+        "the task title adds little or nothing on top of the pixels here — "
+        "on this corpus, the predictable share of dwell is carried by the "
+        "screen itself."
+    )
+    return (
+        f"Adding the task title changes MAE(log) by **{d_all:+.4f} overall** "
+        f"({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive = "
+        f"screen+task better). Read: {verdict}"
+    )
+
+
+def save_calibration_png(cal: pd.DataFrame, model_name: str,
+                         dest: Path) -> None:
     """Decile reliability plot: mean predicted vs mean actual seconds."""
     import matplotlib
 
@@ -289,7 +361,8 @@ def save_calibration_png(cal: pd.DataFrame, dest: Path) -> None:
     ax.set_ylim(0, lim)
     ax.set_xlabel("mean predicted dwell (s)")
     ax.set_ylabel("mean actual dwell (s)")
-    ax.set_title("VLM calibration on TEST\n(decile bins by prediction)")
+    ax.set_title(f"{model_name} calibration on TEST\n"
+                 "(decile bins by prediction)")
     ax.legend(frameon=False, loc="upper left")
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
@@ -346,22 +419,36 @@ def save_qualitative(rows: pd.DataFrame, n: int, banner_h: int,
 # ── Stage 2: report ───────────────────────────────────────────────────────────
 
 def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
-               rows: pd.DataFrame, cfg_path: str) -> None:
+               rows: pd.DataFrame, available: list[dict],
+               pending: list[str], cfg_path: str) -> None:
     scfg = cfg["scoring"]
     winsor_cap = winsor_cap_from_train(df)
     train_median_s = float(df.loc[df["split"] == "train", "dwell_s"].median())
 
-    preds = pd.read_parquet(cfg["paths"]["vlm_preds"])
-    rows, parse_stats = parse_vlm_preds(
-        rows, preds,
-        winsor_cap=winsor_cap,
-        train_median_s=train_median_s,
-        clip_to_winsor=scfg["clip_pred_to_winsor"],
-    )
+    # Parse every available VLM condition (aligned to `rows` order)
+    vlm_frames: dict[str, pd.DataFrame] = {}
+    vlm_stats: dict[str, dict] = {}
+    for mcfg in available:
+        frame, stats = parse_vlm_preds(
+            rows, pd.read_parquet(mcfg["preds"]),
+            winsor_cap=winsor_cap,
+            train_median_s=train_median_s,
+            clip_to_winsor=scfg["clip_pred_to_winsor"],
+        )
+        vlm_frames[mcfg["name"]] = frame
+        vlm_stats[mcfg["name"]] = stats
+
+    primary_name = cfg["report"]["primary_model"]
+    if primary_name not in vlm_frames:
+        primary_name = available[0]["name"]
+        log.info(f"primary model not available — using {primary_name!r} for "
+                 f"calibration/qualitative")
+    primary = vlm_frames[primary_name]
 
     # Baseline on the same rows (subset where the axTree resolved)
     bl = baseline_preds(cfg, bcfg, rows)
     common = rows.merge(bl, on=KEY, how="inner", validate="1:1")
+    common_mask = rows.set_index(KEY).index.isin(common.set_index(KEY).index)
 
     # Floors: TRAIN mean/median of y, constant on every row (same recipe as
     # the baseline report)
@@ -369,38 +456,47 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
     floors = {"train-mean floor": float(np.mean(y_train)),
               "train-median floor": float(np.median(y_train))}
 
-    # Head-to-head on identical rows
+    # Head-to-head on identical rows: floors < LightGBM < VLM condition(s)
     y_c = common["y"].to_numpy()
     nav_c = common["is_navigation"].to_numpy()
     models = {name: np.full_like(y_c, const)
               for name, const in floors.items()}
     models["LightGBM (no image)"] = common["lgbm_pred_log"].to_numpy()
-    models["VLM (screenshot)"] = common["vlm_pred_log"].to_numpy()
+    for name, frame in vlm_frames.items():
+        models[name] = frame.loc[common_mask, "vlm_pred_log"].to_numpy()
     head_lines, head_metrics = metrics_table(models, y_c, nav_c)
 
-    # VLM on the FULL eval set (rows the baseline couldn't cover included)
+    # Task-level rollup on the same rows (RQ v2: whole-task Time-on-Task)
+    task_lines, task_metrics = task_level_table(
+        models, common["trajectory_id"].to_numpy(), y_c)
+    steps_per_task = common.groupby("trajectory_id").size()
+
+    # VLM conditions on the FULL eval set (rows the baseline couldn't cover)
     y_f = rows["y"].to_numpy()
     nav_f = rows["is_navigation"].to_numpy()
     full_lines, _ = metrics_table(
-        {"VLM (screenshot)": rows["vlm_pred_log"].to_numpy()}, y_f, nav_f)
+        {name: frame["vlm_pred_log"].to_numpy()
+         for name, frame in vlm_frames.items()}, y_f, nav_f)
 
-    # Calibration (full eval set) + qualitative screenshots
-    cal, ece = calibration_table(y_f, rows["vlm_pred_log"].to_numpy(),
+    # Calibration + qualitative for the primary condition
+    cal, ece = calibration_table(y_f, primary["vlm_pred_log"].to_numpy(),
                                  n_bins=scfg["calibration_bins"])
     cal_png = Path(cfg["paths"]["calibration_png"])
-    save_calibration_png(cal, cal_png)
+    save_calibration_png(cal, primary_name, cal_png)
 
     qual_dir = Path(cfg["paths"]["qualitative_dir"])
-    qual = save_qualitative(rows, cfg["qualitative"]["n"],
+    qual = save_qualitative(primary, cfg["qualitative"]["n"],
                             cfg["qualitative"]["banner_height"],
                             qual_dir, cfg["seed"])
 
-    paragraph = edge_paragraph(head_metrics["VLM (screenshot)"],
-                               head_metrics["LightGBM (no image)"])
+    paragraphs = [edge_paragraph(head_metrics[primary_name],
+                                 head_metrics["LightGBM (no image)"])]
+    if "VLM (screen)" in head_metrics and "VLM (screen+task)" in head_metrics:
+        paragraphs.append(goal_increment_paragraph(
+            head_metrics["VLM (screen)"], head_metrics["VLM (screen+task)"]))
 
-    tc = parse_stats["tier_counts"]
     lines = [
-        "# Evaluation report — VLM vs baseline on held-out TEST domains (O2)",
+        "# Evaluation report — Time-on-Task on held-out TEST domains (O2)",
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')} · "
         f"config `{cfg_path}` · seed {cfg['seed']}_",
@@ -413,37 +509,54 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
         "",
         "## Coverage & parse accounting",
         "",
-        f"- Eval set: **{parse_stats['n']}** TEST rows with a resolved "
-        f"screenshot ({int(nav_f.sum())} navigation / "
-        f"{int((~nav_f).sum())} in-page)",
+        f"- Eval set: **{len(rows)}** TEST rows with a resolved screenshot "
+        f"({int(nav_f.sum())} navigation / {int((~nav_f).sum())} in-page)",
         f"- Head-to-head subset (axTree also resolved for LightGBM): "
-        f"**{len(common)}** rows",
-        f"- VLM parse tiers: strict **{tc['strict']}** · labeled "
-        f"**{tc['labeled']}** · bare number **{tc['bare_number']}** · "
-        f"failed **{tc['fail']}**",
-        f"- **Parse failure rate: {parse_stats['parse_failure_rate']:.2%}** "
-        f"— failures imputed with the {parse_stats['fallback']}, never "
-        f"dropped",
-        ]
-    if parse_stats["clipped_to"]:
+        f"**{len(common)}** rows across **{len(steps_per_task)}** tasks "
+        f"(median {int(steps_per_task.median())} covered steps/task)",
+    ]
+    for name, stats in vlm_stats.items():
+        tc = stats["tier_counts"]
         lines.append(
-            f"- Parsed predictions clipped to {parse_stats['clipped_to']} s "
+            f"- {name}: parse tiers strict **{tc['strict']}** · labeled "
+            f"**{tc['labeled']}** · bare number **{tc['bare_number']}** · "
+            f"failed **{tc['fail']}** — **failure rate "
+            f"{stats['parse_failure_rate']:.2%}**, failures imputed with "
+            f"the {stats['fallback']}, never dropped")
+    first_stats = vlm_stats[primary_name]
+    if first_stats["clipped_to"]:
+        lines.append(
+            f"- Parsed predictions clipped to {first_stats['clipped_to']} s "
             f"(the training-target range)")
+    if pending:
+        lines.append(
+            f"- ⏳ Pending conditions (no prediction cache yet, NOT in the "
+            f"tables): {', '.join(pending)}")
     lines += [
         "",
-        "## Head-to-head (identical rows)",
+        "## Per-screen head-to-head (identical rows)",
         "",
         *head_lines,
         "",
-        "## VLM on the full eval set",
+        "## Task-level Time-on-Task (per-trajectory sums, identical rows)",
+        "",
+        "Per-screen predictions are summed within each task and scored "
+        "against the summed actual — the data-driven analogue of KLM's "
+        "operator-sum. Totals cover only evaluated steps, identically for "
+        "targets and every model, so the comparison is apples-to-apples "
+        "(covered-task time, not wall-clock task time).",
+        "",
+        *task_lines,
+        "",
+        "## VLM conditions on the full eval set",
         "",
         *full_lines,
         "",
-        "## Where does the edge live? (O2 answer)",
+        "## Where does the signal live? (O2 answer)",
         "",
-        paragraph,
-        "",
-        "## Calibration (VLM, full eval set, decile bins by prediction)",
+        *[p + "\n" for p in paragraphs],
+        f"## Calibration ({primary_name}, full eval set, decile bins by "
+        "prediction)",
         "",
         f"![calibration]({cal_png.name})",
         "",
@@ -455,7 +568,7 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
           f"| {r.mean_actual_s:.2f} | {r.gap_s:.2f} |"
           for r in cal.itertuples()],
         "",
-        f"## Qualitative examples (`{qual_dir}/`)",
+        f"## Qualitative examples ({primary_name}, `{qual_dir}/`)",
         "",
         "| file | bucket | pred (s) | actual (s) | step | raw output |",
         "|---|---|---|---|---|---|",
@@ -468,11 +581,15 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
         "```json",
         json.dumps(
             {
-                "head_to_head": head_metrics,
-                "parse_stats": parse_stats,
+                "head_to_head_per_screen": head_metrics,
+                "task_level": task_metrics,
+                "parse_stats": vlm_stats,
                 "calibration_ece_s": ece,
-                "rows": {"eval_set": parse_stats["n"],
-                         "head_to_head": len(common)},
+                "primary_model": primary_name,
+                "pending_models": pending,
+                "rows": {"eval_set": len(rows),
+                         "head_to_head": len(common),
+                         "tasks": int(len(steps_per_task))},
             },
             indent=2,
         ),
@@ -484,9 +601,10 @@ def run_report(cfg: dict, bcfg: dict, df: pd.DataFrame,
     report.write_text("\n".join(lines))
     log.info(f"report → {report} · calibration → {cal_png} · "
              f"qualitative → {qual_dir}/")
-    log.info(json.dumps(
-        {m: head_metrics[m]["overall"]["mae_log"] for m in head_metrics},
-        indent=2))
+    log.info("per-screen MAE(log): " + json.dumps(
+        {m: head_metrics[m]["overall"]["mae_log"] for m in head_metrics}))
+    log.info("task-level MAE(log): " + json.dumps(
+        {m: task_metrics[m]["mae_log"] for m in task_metrics}))
 
 
 def main() -> None:
@@ -494,7 +612,7 @@ def main() -> None:
     ap.add_argument("--config", default="configs/eval.yaml")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--predict-only", action="store_true",
-                       help="run the GPU decode stage and stop")
+                       help="run the GPU decode stage(s) and stop")
     group.add_argument("--report-only", action="store_true",
                        help="fail rather than run the GPU stage")
     args = ap.parse_args()
@@ -508,18 +626,29 @@ def main() -> None:
     rows = eval_rows(df)
     log.info(f"eval set: {len(rows)} TEST rows with resolved screenshots")
 
-    preds_path = Path(cfg["paths"]["vlm_preds"])
-    if args.report_only and not preds_path.exists():
-        sys.exit(f"--report-only but {preds_path} is missing — run the "
-                 f"PREDICT stage on a GPU machine first.")
-    if not args.report_only and not preds_path.exists():
-        run_predict(cfg, vcfg, rows, winsor_cap_from_train(df))
-    elif not args.report_only:
-        log.info(f"using cached predictions: {preds_path}")
+    conditions = cfg["vlm_models"]
+    if not args.report_only:
+        for mcfg in conditions:
+            if Path(mcfg["preds"]).exists():
+                log.info(f"[{mcfg['name']}] using cached predictions: "
+                         f"{mcfg['preds']}")
+            elif Path(mcfg["adapters"]).exists():
+                run_predict(cfg, vcfg, rows, winsor_cap_from_train(df), mcfg)
+            else:
+                log.info(f"[{mcfg['name']}] no adapters yet at "
+                         f"{mcfg['adapters']} — skipping (will be listed as "
+                         f"pending)")
     if args.predict_only:
         return
 
-    run_report(cfg, bcfg, df, rows, args.config)
+    available = [m for m in conditions if Path(m["preds"]).exists()]
+    pending = [m["name"] for m in conditions
+               if not Path(m["preds"]).exists()]
+    if not available:
+        sys.exit("No prediction caches exist for any configured VLM "
+                 "condition — run the PREDICT stage on a GPU machine first.")
+
+    run_report(cfg, bcfg, df, rows, available, pending, args.config)
 
 
 if __name__ == "__main__":

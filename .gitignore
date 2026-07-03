@@ -226,3 +226,7 @@ webchain_dataset/
 checkpoints/
 artifacts/vlm_ckpt/
 wandb/
+
+# Extra
+/docs/
+src/Time_On_Task_Predictor.egg-info

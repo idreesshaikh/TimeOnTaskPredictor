@@ -1,9 +1,14 @@
-# Project: Screenshot → Per-Screen Time-on-Task Regression
+# Project: Screenshot → Time-on-Task Prediction (per screen, and per task)
 
 ## Goal
-Predict how long a user dwells on a web UI screen before acting, from the screenshot
-alone. Research question: how much of per-screen Time-on-Task is recoverable from the
-screen itself, independent of the user's goal/history?
+Predict how long a user dwells on a web UI screen before acting — and, by summing
+per-screen predictions within a trajectory, how long the whole task takes.
+Research question (v2): how accurately can per-screen — and, by aggregation,
+whole-task — Time-on-Task be predicted from rendered UI screens, and how much of
+that predictability resides in the screen alone versus the user's stated task?
+Two trained conditions: screen-only (configs/vlm.yaml — the science core) and
+screen+task-title (configs/vlm_task.yaml — the predictor); identical except the
+prompt flag. Their gap = the goal-driven share of dwell.
 
 ## Non-negotiable rules
 - Reproducibility: global seed = 42 (Python, NumPy, torch, split assignment). Python 3.12.
@@ -51,8 +56,10 @@ Row construction:
 1. `scripts/build_dataset.py --audit | --labels | --resolve-images | --splits`
    → rows_final.parquet, splits.json, dataset_card.md
 2. `scripts/train_baseline.py` → no-image LightGBM baseline + baseline_report.md
-3. `python -m totvlm.train` → QLoRA adapters + vlm_train_card.md (GPU)
-4. `scripts/evaluate.py` → TEST head-to-head VLM vs baseline + eval_report.md
+3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
+   → QLoRA adapters per condition + train cards (GPU; run both conditions)
+4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM < VLM screen <
+   VLM screen+task), per-screen AND task-level (per-trajectory sums) + eval_report.md
 5. `scripts/prepare_external.py` + `scripts/validate_external.py`
    → zero-shot external check + external_report.md (evaluate-once, guarded)
 

@@ -1,0 +1,60 @@
+# Qwen3-VL QLoRA SFT — the TASK-AWARE condition of RQ v2: same recipe as
+# configs/vlm.yaml in every respect EXCEPT the prompt also carries the task
+# title. The screen-only run (configs/vlm.yaml) isolates what the screen
+# alone predicts; the gap between the two conditions measures the
+# goal-driven share of dwell. Keep every other knob identical so the
+# comparison stays controlled.
+# SPEC.md rule: ALL tunable numbers live here, never in code.
+seed: 42
+
+paths:
+  rows_final: data/processed/rows_final.parquet   # split + winsorized dwell_s
+  output_dir: artifacts/vlm_task_ckpt             # separate checkpoints
+  train_card: artifacts/vlm_task_train_card.md    # separate stage card
+
+model:
+  checkpoint: unsloth/Qwen3-VL-4B-Instruct
+  load_in_4bit: true                # QLoRA
+  gradient_checkpointing: true      # Unsloth offloaded checkpointing
+  max_seq_length: 1536              # ~768 visual tokens + prompt + task title
+  finetune_vision_layers: false     # SPEC.md: vision frozen
+  lora_r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+
+image:                              # bounds Qwen3-VL visual tokens (28 px grid)
+  max_side: 1024
+  min_pixels: 100352                # 128 * 28^2  → ≥128 visual tokens
+  max_pixels: 602112                # 768 * 28^2  → ≤768 visual tokens
+
+data:
+  include_task_title: true          # ← the ONLY difference vs configs/vlm.yaml
+
+train:
+  learning_rate: 2.0e-4
+  num_epochs: 3
+  batch_size: 4                     # per-device micro-batch (verify memory fit
+  grad_accum: 4                     #  with --dry-run first) → effective 16
+  eval_batch_size: 4
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  lr_scheduler: cosine
+  optim: adamw_8bit
+  max_grad_norm: 1.0
+  logging_steps: 5
+  save_total_limit: 2
+  report_to: wandb
+  wandb_project: tot-vlm
+  run_name: qwen3vl4b-qlora-pathA-task
+
+eval:
+  decode_samples: 32                # val screens greedily decoded per epoch
+  max_new_tokens: 12                # "dwell_seconds: 9999.9" ≈ 10 tokens
+
+dry_run:                            # --dry-run: SAME batch/pixels (doubles as the
+  n_train: 50                       # memory smoke test), tiny data + few steps
+  n_val: 16
+  max_steps: 12
+  logging_steps: 1
+  decode_samples: 8
+  report_to: none

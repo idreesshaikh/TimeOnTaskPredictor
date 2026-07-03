@@ -1,20 +1,33 @@
-# TEST-split evaluation: VLM vs LightGBM vs floors (O2).
+# TEST-split evaluation (O2): VLM conditions vs LightGBM vs floors,
+# per-screen AND aggregated to task level (RQ v2).
 # SPEC.md rule: ALL tunable numbers live here, never in code.
 seed: 42
 
-# Prompt/image knobs MUST match training; axtree knobs MUST match the
+# Image/prompt knobs MUST match training; axtree knobs MUST match the
 # baseline run — both are read from the configs that produced those models.
 vlm_config: configs/vlm.yaml
 baseline_config: configs/baseline.yaml
 
 paths:
   rows_final: data/processed/rows_final.parquet
-  adapters: artifacts/vlm_ckpt/final          # trained LoRA adapters
-  vlm_preds: artifacts/vlm_test_preds.parquet # raw decode cache (GPU stage)
   baseline_model: artifacts/baseline_lgbm.txt
   report: artifacts/eval_report.md
   calibration_png: artifacts/calibration.png
   qualitative_dir: artifacts/qualitative
+
+# Every trained VLM condition entering the head-to-head. Each has its own
+# adapters + raw-decode cache; the predict stage fills whichever caches are
+# missing, and the report includes whichever exist (missing → listed as
+# pending, never silently skipped).
+vlm_models:
+  - name: "VLM (screen)"            # science core: what the screen ALONE predicts
+    adapters: artifacts/vlm_ckpt/final
+    preds: artifacts/vlm_test_preds.parquet
+    include_task_title: false
+  - name: "VLM (screen+task)"       # the Time-on-Task PREDICTOR condition
+    adapters: artifacts/vlm_task_ckpt/final
+    preds: artifacts/vlm_task_test_preds.parquet
+    include_task_title: true
 
 predict:                    # GPU stage
   batch_size: 8
@@ -26,6 +39,10 @@ scoring:
   clip_pred_to_winsor: true # clip parsed preds to [0, train p95 cap] — the
                             # exact range the model was trained to emit
   calibration_bins: 10
+
+report:
+  primary_model: "VLM (screen)"   # drives the calibration plot + qualitative
+                                  # screenshots (the science core)
 
 qualitative:
   n: 6                      # 2 best / 2 median / 2 worst by |log error|
