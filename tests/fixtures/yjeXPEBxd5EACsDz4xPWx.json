@@ -1,0 +1,630 @@
+{
+ "id": "yjeXPEBxd5EACsDz4xPWx",
+ "steps": [
+  {
+   "id": "t3kUoMVhuboDwpr8olma_",
+   "host": "",
+   "href": "",
+   "mask": false,
+   "type": "launchApp",
+   "model": "guide",
+   "tabId": 758227536,
+   "title": "",
+   "value": "",
+   "width": 275,
+   "trigger": true,
+   "position": "bottom",
+   "richLink": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"https://shopee.com.my/\"}]}]}",
+   "hostTitle": "",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {}
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "buttonRadius": 8,
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "kgeEV0neNc3rBVwMUHBSU",
+   "img": "https://data.imean.tech/uploads/1734363843259-7wdg3.png",
+   "host": "shopee.com.my",
+   "href": "https://shopee.com.my/",
+   "mask": false,
+   "path": "body>div>div>div>header>div>nav>ul>a>span",
+   "rect": {
+    "x": 1018.013916015625,
+    "y": 9.19444465637207,
+    "top": 9.19444465637207,
+    "left": 1018.013916015625,
+    "right": 1044.041694641113,
+    "width": 26.02777862548828,
+    "bottom": 24.79166698455811,
+    "height": 15.59722232818604
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 1024.888916015625,
+   "pageY": 19.11112403869629,
+   "tabId": 758227536,
+   "title": "\u70b9\u51fb Help",
+   "value": "Help",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734363845601-cbgpD.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 1024.888916015625,
+   "clientY": 19.11112403869629,
+   "favicon": "https://data.imean.tech/uploads/1734342370950-X-HQt.png",
+   "offsetX": 6.875,
+   "offsetY": 9.916680335998535,
+   "screenX": 1212,
+   "screenY": 153.3333435058594,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".navbar__link-text.navbar__link--tappable ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee Malaysia | Free Shipping Across Malaysia",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "SPAN",
+      "index": 1
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734363840681,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.9440165340733462,
+    "y": 0,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mluqrbvfnf8f049i6e7a9rgl3029kf-1734363835229"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "KnG4KnkKBJt8HypDYe_HW",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/",
+   "mask": false,
+   "type": "launchApp",
+   "model": "guide",
+   "tabId": 758228211,
+   "title": "",
+   "value": "",
+   "width": 275,
+   "trigger": true,
+   "position": "bottom",
+   "richLink": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"https://help.shopee.com.my/portal/4/\"}]}]}",
+   "hostTitle": "Shopee MY Help Center",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {}
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "buttonRadius": 8,
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "LIVwVcQBr-jqURWNfce4U",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "type": "launchApp",
+   "model": "guide",
+   "tabId": 758228211,
+   "title": "",
+   "value": "",
+   "width": 275,
+   "trigger": true,
+   "position": "bottom",
+   "richLink": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"https://help.shopee.com.my/portal/4\"}]}]}",
+   "hostTitle": "Shopee MY Help Center",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {}
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "buttonRadius": 8,
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "FMlhgsvcpSdM8VkEPPMN-",
+   "img": "https://data.imean.tech/uploads/1734363864144--HX1j.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>input",
+   "rect": {
+    "x": 286.8888854980469,
+    "y": 212.4444427490234,
+    "top": 212.4444427490234,
+    "left": 286.8888854980469,
+    "right": 1002.888885498047,
+    "width": 716,
+    "bottom": 235.4444427490234,
+    "height": 23
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 418.6666564941406,
+   "pageY": 218.2222442626953,
+   "tabId": 758228211,
+   "title": "\u70b9\u51fb",
+   "value": "",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734363866360-siofY.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 418.6666564941406,
+   "clientY": 218.2222442626953,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 131.7777862548828,
+   "offsetY": 5.777804851531982,
+   "screenX": 757.3333740234375,
+   "screenY": 302.6666870117188,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".input___K0K5i >input:nth-child(1)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "INPUT",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734363863778,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.3092515635495791,
+    "y": 0,
+    "scale": 0.8959770114942529,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mluqrbvfnf8f049i6e7a9rgl3029kf-1734363858512"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "THFhzA5PdyxyMrkR4FlDQ",
+   "img": "https://data.imean.tech/uploads/1734363864144--HX1j.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>input",
+   "rect": {
+    "x": 286.8888854980469,
+    "y": 212.4444427490234,
+    "top": 212.4444427490234,
+    "left": 286.8888854980469,
+    "right": 1002.888885498047,
+    "width": 716,
+    "bottom": 235.4444427490234,
+    "height": 23
+   },
+   "type": "type",
+   "model": "guide",
+   "tabId": 758228211,
+   "title": "\u8f93\u5165 redeem point",
+   "value": "redeem point",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734363866360-siofY.json",
+   "bubbles": true,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".input___K0K5i >input:nth-child(1)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee MY Help Center",
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "INPUT",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": false,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734363869082,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.3092515635495791,
+    "y": 0,
+    "scale": 0.8959770114942529,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "actionRuleSetting": {
+    "type": {
+     "name": "type",
+     "fixedValue": "redeem point",
+     "operationType": "replace",
+     "dataSourceType": "fixed_value"
+    }
+   },
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "_CKkHYmQPTq0IBd6G4dUk",
+   "img": "https://data.imean.tech/uploads/1734363923431-tz1xo.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div",
+   "rect": {
+    "x": 284.8888854980469,
+    "y": 402.2222290039062,
+    "top": 402.2222290039062,
+    "left": 284.8888854980469,
+    "right": 1062.666656494141,
+    "width": 777.7777709960938,
+    "bottom": 430.2222290039062,
+    "height": 28
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 867.5555419921875,
+   "pageY": 411.1111145019531,
+   "tabId": 758228211,
+   "title": "\u70b9\u51fb [Brand Memberships] How do I earn Brand Membership points?",
+   "value": "[Brand Memberships] How do I earn Brand Membership points?",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734363925553-V3c1O.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 867.5555419921875,
+   "clientY": 411.1111145019531,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 867.5555419921875,
+   "offsetY": 411.1111145019531,
+   "screenX": 1094,
+   "screenY": 447.3333435058594,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".searchList___2WmDl >div:nth-child(13)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "DIV",
+      "index": 12
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734363923128,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.3036228902526975,
+    "y": -0.3204938977802803,
+    "scale": 0.8515964288821166,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mluqrbvfnf8f049i6e7a9rgl3029kf-1734363914883"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "05_GDWtghpi1v1Bizal5k",
+   "img": "https://data.imean.tech/uploads/1734363956880-nAjgu.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/article/78523-[Brand-Memberships]-How-do-I-earn-Brand-Membership-points?previousPage=search%20recommendation%20bar",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>div>div>div>div>div>div>div>div>div",
+   "rect": {
+    "x": 184.8888854980469,
+    "y": 637,
+    "top": 637,
+    "left": 184.8888854980469,
+    "right": 454.8888854980469,
+    "width": 270,
+    "bottom": 657,
+    "height": 20
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 276.4444580078125,
+   "pageY": 650.2222290039062,
+   "tabId": 758228211,
+   "title": "\u70b9\u51fb Reward Programmes",
+   "value": "Reward Programmes",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734363959027-L_sZV.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 276.4444580078125,
+   "clientY": 650.2222290039062,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 276.4444580078125,
+   "offsetY": 650.2222290039062,
+   "screenX": 650.6666870117188,
+   "screenY": 626.6666870117188,
+   "scrollX": 0,
+   "scrollY": 0,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".category_items___pBMDO >div:nth-child(2)>div:nth-child(1)",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "[Brand Memberships] How do I earn Brand Membership points? | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "DIV",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734363956588,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": 0,
+    "y": -0.9976851851851852,
+    "scale": 1,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mluqrbvfnf8f049i6e7a9rgl3029kf-1734363951218"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  },
+  {
+   "id": "Imd57AlIB-bHTthE4X3oA",
+   "img": "https://data.imean.tech/uploads/1734364030770-_vKJM.png",
+   "host": "help.shopee.com.my",
+   "href": "https://help.shopee.com.my/portal/4/category/30-Deals-Rewards/663-Reward-Programmes?page=1",
+   "mask": false,
+   "path": "body>div>div>div>div>div>div>div>a>h3",
+   "rect": {
+    "x": 558.888916015625,
+    "y": 602.5555419921875,
+    "top": 602.5555419921875,
+    "left": 558.888916015625,
+    "right": 1184.888916015625,
+    "width": 626,
+    "bottom": 691.4444351196289,
+    "height": 88.8888931274414
+   },
+   "type": "click",
+   "model": "guide",
+   "pageX": 811.5555419921875,
+   "pageY": 904.4444885253906,
+   "tabId": 758228211,
+   "title": "\u70b9\u51fb [Keahlian Jenama] Bagaimanakah cara untuk menebus ganjaran Keahlian Jenama?",
+   "value": "[Keahlian Jenama] Bagaimanakah cara untuk menebus ganjaran Keahlian Jenama?",
+   "width": 275,
+   "axTree": "https://data.imean.tech/temp-uploads/1734364033349-bxRHn.json",
+   "detail": 0,
+   "bubbles": true,
+   "clientX": 811.5555419921875,
+   "clientY": 637.77783203125,
+   "favicon": "https://data.imean.tech/uploads/1734353950281-0TQ87.ico",
+   "offsetX": 811.5555419921875,
+   "offsetY": 904.4444885253906,
+   "screenX": 1052,
+   "screenY": 617.3333740234375,
+   "scrollX": 0,
+   "scrollY": 135.1111145019531,
+   "trigger": true,
+   "position": "bottom",
+   "selector": ".list___2CXhp >a:nth-child(7)>.item___3laL- ",
+   "viewport": {
+    "width": 1392,
+    "height": 1051
+   },
+   "hostTitle": "Reward Programmes | Shopee MY Help Center",
+   "movementX": 0,
+   "movementY": 0,
+   "orderList": [
+    "title",
+    "description",
+    "media"
+   ],
+   "attributes": {
+    "data": {
+     "node": {
+      "name": "H3",
+      "index": 0
+     },
+     "role": "",
+     "aria-label": "",
+     "aria-controls": "",
+     "aria-haspopup": ""
+    }
+   },
+   "buttonText": "\u4e0b\u4e00\u6b65",
+   "cancelable": true,
+   "buttonColor": "rgba(80, 95, 121, 1)",
+   "buttonWidth": 72,
+   "createdTime": 1734364030475,
+   "buttonRadius": 8,
+   "imgMarkValue": {
+    "x": -0.6730595987637378,
+    "y": -0.9387245648031084,
+    "scale": 0.960632183908046,
+    "imgWidth": 1392,
+    "imgHeight": 1050.666666666667,
+    "canvasWidth": 714,
+    "canvasHeight": 432
+   },
+   "buttonPosition": "right",
+   "fullScreenshot": [
+    "mluqrbvfnf8f049i6e7a9rgl3029kf-1734363958928"
+   ],
+   "isAloneSettings": false,
+   "devicePixelRatio": 1.125,
+   "matchConstraints": [],
+   "automationExecType": "force",
+   "isShowGuideModelMedia": false
+  }
+ ],
+ "title": "Find out how to redeem points for exclusive deals and rewards on the website.",
+ "deleted": 0,
+ "createdAt": "2024-12-16T15:47:52.202000",
+ "description": null
+}

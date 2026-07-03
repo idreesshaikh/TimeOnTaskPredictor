@@ -1,0 +1,39 @@
+# External zero-shot validation (READ-ONLY set — SPEC.md rules).
+# This config is the ONLY yaml allowed to reference data/external
+# (enforced by tests/test_external_guard.py).
+seed: 42
+
+vlm_config: configs/vlm.yaml   # prompt/image knobs must match training
+
+# Source: tasksense (first choice) or vsgui10k (documented fallback).
+# TaskSense (arXiv 2511.09309) released no screenshots/human times as of
+# 2026-07-03 — see artifacts/external_card.md for the decision record.
+source: vsgui10k
+
+paths:
+  adapters: artifacts/vlm_ckpt/final   # the FROZEN checkpoint
+  external_root: data/external
+  card: artifacts/external_card.md
+  preds: artifacts/external_preds.parquet
+  report: artifacts/external_report.md
+  scatter_png: artifacts/external_scatter.png
+
+tasksense:
+  # manual transcription target if the data ever becomes available:
+  csv: data/external/tasksense/tasksense.csv   # [item_id, screenshot_path, human_time_s]
+
+vsgui10k:
+  zip_url: https://osf.io/download/wbxdr/      # OSF project hmg9b
+  min_trials_per_screen: 3    # per-screen median needs a few observations
+  target_present_only: true   # target-absent trials measure give-up time
+  aggregate: median           # per-screen aggregate across trials
+
+predict:                      # GPU stage (frozen adapters, zero-shot)
+  batch_size: 8
+  max_new_tokens: 12
+
+report:
+  bootstrap_samples: 10000    # seeded bootstrap over items for the CI
+  ci: 0.95
+  primary_category: web       # in-domain subset (model is web-trained);
+                              # mobile/desktop reported as secondary

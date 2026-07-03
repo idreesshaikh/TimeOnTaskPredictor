@@ -1,0 +1,32 @@
+# TEST-split evaluation: VLM vs LightGBM vs floors (O2).
+# SPEC.md rule: ALL tunable numbers live here, never in code.
+seed: 42
+
+# Prompt/image knobs MUST match training; axtree knobs MUST match the
+# baseline run — both are read from the configs that produced those models.
+vlm_config: configs/vlm.yaml
+baseline_config: configs/baseline.yaml
+
+paths:
+  rows_final: data/processed/rows_final.parquet
+  adapters: artifacts/vlm_ckpt/final          # trained LoRA adapters
+  vlm_preds: artifacts/vlm_test_preds.parquet # raw decode cache (GPU stage)
+  baseline_model: artifacts/baseline_lgbm.txt
+  report: artifacts/eval_report.md
+  calibration_png: artifacts/calibration.png
+  qualitative_dir: artifacts/qualitative
+
+predict:                    # GPU stage
+  batch_size: 8
+  max_new_tokens: 12        # "dwell_seconds: 9999.9" ≈ 10 tokens
+
+scoring:
+  fallback: train_median    # unparseable output → TRAIN median winsorized
+                            # dwell_s; the imputation RATE is always reported
+  clip_pred_to_winsor: true # clip parsed preds to [0, train p95 cap] — the
+                            # exact range the model was trained to emit
+  calibration_bins: 10
+
+qualitative:
+  n: 6                      # 2 best / 2 median / 2 worst by |log error|
+  banner_height: 44         # annotation strip above each screenshot, px

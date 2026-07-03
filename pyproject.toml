@@ -12,17 +12,37 @@ dependencies = [
     "torchaudio==2.5.1",
     "transformers==5.0.0rc1",
     "accelerate>=1.13.0",
-    "datasets>=5.0.0",
+    "datasets>=3.4.1",   # floor only (unused in code): unsloth-zoo caps <4.4
     "pillow>=12.2.0",
     "sentencepiece>=0.2.1",
     "safetensors>=0.8.0",
-    "peft==0.16.0",
+    "peft>=0.16.0",   # floor only: unsloth (vlm extra) needs a newer peft
     "huggingface_hub>=0.14.1",
     "wandb>=0.27.2",
+    "pandas-stubs~=3.0.3",
+    "pandas>=3.0.3",
+    "pyarrow>=24.0.0",
+    "tldextract>=5.3.1",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.4",
+    "scipy>=1.14.1",
+    "lightgbm>=4.5.0",
+    "matplotlib>=3.9",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# CUDA-only training stack for totvlm.train (Unsloth QLoRA SFT).
+# Install with: uv sync --extra vlm
+vlm = [
+    # unsloth pins its own compatible trl (<=0.24) and transformers range;
+    # >=2025.10 is when Qwen3-VL vision support landed.
+    "unsloth>=2025.10 ; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
 dev = [
+    "pytest>=9.1.1",
     "ruff>=0.15.16",
 ]
 
