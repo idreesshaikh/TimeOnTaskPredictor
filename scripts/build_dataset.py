@@ -102,41 +102,88 @@ def run_resolve_images(
     cache_dir: Path,
     images_root: Path,
     limit: int | None,
+    data_config: Path,
 ) -> None:
     """
     Resolve each row's img_ref to a cached local file. Rows are kept and
     flagged (`img_resolved`), never dropped — exclusion happens at train time.
     Idempotent: cached files are skipped, so reruns resume where they stopped.
-    `--resolve-limit N` bounds this run to N un-cached URL fetches (sampling /
-    incremental runs); the report then also extrapolates full coverage.
+
+    Download strategy (configs/data.yaml `resolve`): the full corpus is ~182k
+    screenshots ≈ 122 GB — infeasible. With `row_budgets` set, downloads are
+    restricted to whole trajectories per split (seeded, prefix-stable — see
+    totvlm.splits.sample_trajectory_rows), so no sampled task has missing
+    screens; `store` downscales + JPEG-re-encodes at download time (~3× less
+    disk). Anything already in the cache counts as resolved regardless of the
+    sample. `--resolve-limit N` additionally bounds this run to N un-cached
+    fetches (probe runs); the report then extrapolates coverage.
     """
+    from totvlm.config import load_config
     from totvlm.images import (
-        cache_path,
+        find_cached,
         is_http_ref,
         resolve_refs,
         write_resolution_report,
     )
+    from totvlm.splits import (
+        add_split_column,
+        load_or_create_splits,
+        sample_trajectory_rows,
+    )
+
+    cfg = load_config(data_config)
+    rcfg = cfg.get("resolve") or {}
+    budgets = rcfg.get("row_budgets")
+    store = rcfg.get("store")
 
     df = pd.read_parquet(rows_in)
     refs = [r for r in df["img_ref"].dropna().unique() if r]
     url_refs = [r for r in refs if is_http_ref(r)]
     hash_refs = [r for r in refs if not is_http_ref(r)]
 
+    # Which URLs are download targets? All of them, or the trajectory sample.
+    sampled_mask = None
+    if budgets:
+        # Split assignment via the frozen splits.json (created here if this
+        # is a from-scratch run — same function --splits uses, so identical).
+        assignment = load_or_create_splits(
+            df["registrable_domain"].dropna().unique(),
+            path=cfg["paths"]["splits_json"], seed=cfg["seed"],
+        )
+        with_split = add_split_column(df, assignment)
+        sampled_mask = sample_trajectory_rows(with_split, budgets,
+                                              seed=cfg["seed"])
+        sampled_urls = {
+            r for r in with_split.loc[sampled_mask, "img_ref"].dropna()
+            if is_http_ref(r)
+        }
+        target_urls = [u for u in url_refs if u in sampled_urls]
+        log.info(
+            "trajectory-budget mode: " + ", ".join(
+                f"{s}≈{b} rows" for s, b in budgets.items())
+            + f" → {int(sampled_mask.sum())} rows / {len(target_urls)} URLs "
+              f"targeted (prefix-stable, seed {cfg['seed']})"
+        )
+    else:
+        target_urls = url_refs
+
     to_fetch = list(hash_refs)   # hash lookup is local and free — always do it
-    uncached = [u for u in url_refs if not cache_path(u, cache_dir).exists()]
-    cached = [u for u in url_refs if cache_path(u, cache_dir).exists()]
+    uncached = [u for u in target_urls if not find_cached(u, cache_dir)]
+    cached = [u for u in url_refs if find_cached(u, cache_dir)]
     if limit is None:
         attempted = uncached
     else:
-        # random sample (seed 42) → representative success-rate/size estimates
-        attempted = random.Random(42).sample(uncached, min(limit, len(uncached)))
+        # seeded sample → representative success-rate/size estimates
+        attempted = random.Random(cfg["seed"]).sample(
+            uncached, min(limit, len(uncached)))
     to_fetch += cached + attempted
     log.info(
         f"{len(refs)} unique refs: {len(url_refs)} URL ({len(cached)} already "
         f"cached, attempting {len(attempted)}), {len(hash_refs)} hash"
     )
 
-    resolved = resolve_refs(to_fetch, cache_dir=cache_dir, images_root=images_root)
+    resolved = resolve_refs(to_fetch, cache_dir=cache_dir,
+                            images_root=images_root, store=store)
 
     df["img_path"] = df["img_ref"].map(lambda r: resolved.get(r))
     df["img_resolved"] = df["img_path"].notna()
@@ -159,11 +206,35 @@ def run_resolve_images(
         "fetch_attempted_this_run": len(attempted),
         "fetch_succeeded_this_run": n_attempt_ok,
     }
+    if budgets:
+        ws = with_split
+        ws["img_resolved"] = df["img_resolved"]      # same index/order
+        per_split = {}
+        for s, budget in budgets.items():
+            sel = ws[(ws["split"] == s) & sampled_mask]
+            per_split[s] = {
+                "budget_rows": budget,
+                "rows_sampled": int(len(sel)),
+                "trajectories_sampled": int(sel["trajectory_id"].nunique()),
+                "rows_resolved": int(sel["img_resolved"].sum()),
+            }
+        cache_bytes = sum(
+            f.stat().st_size for f in Path(cache_dir).iterdir() if f.is_file()
+        )
+        stats["trajectory_budget"] = {
+            "per_split": per_split,
+            "cache_gb_on_disk": round(cache_bytes / 1e9, 2),
+            "store": store,
+            "note": "whole trajectories per split, seeded prefix-stable "
+                    "(growing a budget only adds trajectories; reruns "
+                    "resume) — no sampled task has missing screens",
+        }
     if attempted:
         rate = n_attempt_ok / len(attempted)
         sizes = [
-            cache_path(u, cache_dir).stat().st_size
+            p.stat().st_size
             for u in attempted if resolved.get(u)
+            if (p := find_cached(u, cache_dir))
         ]
         mean_kb = (sum(sizes) / len(sizes) / 1024) if sizes else 0.0
         stats["url_success_rate_this_run"] = round(rate, 4)
@@ -285,7 +356,7 @@ def main() -> None:
     if args.resolve_images:
         run_resolve_images(Path(args.rows_out), Path(args.resolved_out),
                            Path(args.images_cache), Path(args.images_root),
-                           args.resolve_limit)
+                           args.resolve_limit, Path(args.data_config))
     if args.splits:
         run_splits(Path(args.data_config))
 

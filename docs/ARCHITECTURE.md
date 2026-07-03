@@ -11,16 +11,20 @@ document and that one disagree, `SPEC.md` wins.
 
 ## 1. What this project is, in one paragraph
 
-We ask how much of **per-screen Time-on-Task** — the seconds a user dwells on
-a web UI screen before their next action — is predictable **from the
-screenshot alone**, independent of the user's goal or history. To answer it we
-(1) derive dwell labels from real interaction traces (WebChain) with a
-verified, documented procedure; (2) fine-tune a compact vision-language model
-(Qwen3-VL-4B, 4-bit QLoRA) to *emit* the dwell as text from the screenshot,
-and compare it against a no-image LightGBM baseline built on interpretable
-accessibility-tree features — the bar pixels must clear; and (3) validate the
-frozen model zero-shot, exactly once, against an independent human-timing
-dataset. The contribution is the methodology and the honest measurement, not a
+We ask how accurately **Time-on-Task** can be predicted from rendered UI
+screens — per screen (the seconds a user dwells before their next action)
+and, by summing per-screen predictions within a trajectory, per whole task —
+and how much of that predictability resides in the screen alone versus the
+user's stated task (RQ v2). To answer it we (1) derive dwell labels from real
+interaction traces (WebChain) with a verified, documented procedure;
+(2) fine-tune a compact vision-language model (Qwen3-VL-4B, 4-bit QLoRA) to
+*emit* the dwell as text, in two otherwise-identical conditions —
+**screen-only** (the science core) and **screen+task** (the predictor; their
+gap = the goal-driven share) — and compare both against a no-image LightGBM
+baseline built on interpretable accessibility-tree features, per screen and
+rolled up to task level; and (3) validate the frozen screen-only model
+zero-shot, exactly once, against an independent human-timing dataset. The
+contribution is the methodology and the honest measurement, not a
 leaderboard entry.
 
 **The three objectives** (each maps to concrete pipeline stages below):
@@ -28,7 +32,7 @@ leaderboard entry.
 | objective | question | answered by |
 |---|---|---|
 | **O1 — Labels** | can faithful per-screen dwell labels be extracted from traces, confounds documented? | stages 1a–1d |
-| **O2 — Recoverable signal** | does the screenshot model beat the interpretable structural baseline? | stages 2–4 |
+| **O2 — Recoverable signal** | do the screen models beat the structural baseline; how much does the task add; does it hold at task level? | stages 2–4 |
 | **O3 — Generalization** | does the frozen model rank screens like independently measured humans? | stage 5 |
 
 ---
@@ -53,13 +57,16 @@ leaderboard entry.
   scripts/train_baseline.py            python -m totvlm.train        (GPU)
   LightGBM on axTree features          Qwen3-VL-4B QLoRA SFT, Path A:
   (no image — the bar to beat)         emit "dwell_seconds: X.X"
-  → baseline_report.md                 → artifacts/vlm_ckpt/ + vlm_train_card.md
+  → baseline_report.md                 × 2 conditions: vlm.yaml (screen-only)
+                                         + vlm_task.yaml (screen+task)
+                                       → vlm_ckpt/ · vlm_task_ckpt/ + cards
               └─────────────────┬──────────────────┘
                                 ▼
                     scripts/evaluate.py            (GPU decode, CPU report)
                     TEST head-to-head on identical rows:
-                    floors vs LightGBM vs VLM · nav/in-page split ·
-                    calibration plot · qualitative screenshots
+                    floors vs LightGBM vs VLM(screen) vs VLM(screen+task)
+                    per-screen · nav/in-page split · TASK-LEVEL rollup
+                    (per-trajectory sums) · calibration · qualitative
                     → artifacts/eval_report.md                        (O2)
                                 │
                                 ▼
@@ -92,7 +99,7 @@ each step's decisions are on the record.
 |---|---|---|
 | `--audit` | descriptive stats over raw JSON *before* trusting it (step types, timestamp coverage, img/axTree availability, merge-eligible runs) | `artifacts/raw_audit.md` |
 | `--labels` | the load-bearing dwell spec (see §4, `labels.py`) | `rows.parquet`, `artifacts/rows_card.md` |
-| `--resolve-images` | download/cache screenshots (sha1-keyed, resumable, failures flagged not fatal) | `rows_resolved.parquet`, `artifacts/image_resolution.md` |
+| `--resolve-images` | download/cache screenshots — **trajectory-budgeted**: whole tasks per split (seeded, prefix-stable, resumable; no sampled task has missing screens) with store-time JPEG recompression (~6× less disk; full corpus would be ~122 GB, budgets ≈ 1 GB); failures flagged not fatal | `rows_resolved.parquet`, `artifacts/image_resolution.md` |
 | `--splits` | domain-disjoint split assignment + train-only p95 winsor cap + target `y = log1p(dwell_s)` | **`rows_final.parquet`**, `artifacts/splits.json`, `artifacts/dataset_card.md` |
 
 Result: **206,925 rows** (≈32k trajectories, 193 domains; train 135 / val 29 /
@@ -113,25 +120,31 @@ above the constant floors (0.578–0.582) → `artifacts/baseline_report.md`.
 
 Path A SFT on Unsloth's official Qwen3-VL vision pipeline: the model learns to
 answer with exactly `dwell_seconds: X.X` (dwell winsorized, 1 decimal) given
-the system prompt and the downscaled screenshot — **no task title by default**
-(the research question is screen-only; `include_task_title: true` is the
-ablation). 4-bit QLoRA, vision layers frozen, LoRA r=16/α=16 on language
-attention+MLP. Per-epoch val hook decodes a seeded sample and reports
-parse-success rate. `--dry-run` (50 examples, same batch/pixels) is the
-mandatory memory smoke test before any full run. Checkpoints →
-`artifacts/vlm_ckpt/`, card → `artifacts/vlm_train_card.md`.
+the system prompt and the downscaled screenshot. **Two otherwise-identical
+conditions** (RQ v2): `configs/vlm.yaml` — screen-only, the science core —
+and `configs/vlm_task.yaml` — the prompt also carries the task title, the
+deployable predictor; the only differing knob is `include_task_title`.
+4-bit QLoRA, vision layers frozen, LoRA r=16/α=16 on language attention+MLP.
+Per-epoch val hook decodes a seeded sample and reports parse-success rate.
+`--dry-run` (50 examples, same batch/pixels) is the mandatory memory smoke
+test before any full run. Checkpoints → `artifacts/vlm_ckpt/` and
+`artifacts/vlm_task_ckpt/`, cards per condition.
 
 ### Stage 4 — Internal evaluation (`scripts/evaluate.py`) — answers O2
 
 Two sub-stages so the GPU is never re-run to tweak a report:
 **predict** (GPU) batch-decodes every TEST row with a resolved screenshot into
-a raw-output cache; **report** (CPU) parses with lenient tiers (failure rate
-stated; failures imputed with the TRAIN median — never hidden), re-scores the
-LightGBM baseline *on the same rows* (axTree features fetched via the cache),
-and writes the head-to-head table (floors / LightGBM / VLM × overall /
-navigation / in-page), calibration deciles + `calibration.png`, an
-auto-computed paragraph on whether the VLM's edge concentrates in in-page
-steps (cognitive signal) vs navigation (page-load latency), and six annotated
+one raw-output cache *per VLM condition* (conditions without a cache are
+listed as pending, never silently skipped); **report** (CPU) parses with
+lenient tiers (failure rate stated; failures imputed with the TRAIN median —
+never hidden), re-scores the LightGBM baseline *on the same rows* (axTree
+features fetched via the cache), and writes: the per-screen head-to-head
+(floors / LightGBM / VLM screen / VLM screen+task × overall / navigation /
+in-page), the **task-level table** (per-trajectory sums of predicted seconds
+vs summed actual — `totvlm.scoring.task_totals`; covered steps only,
+identical for targets and every model), auto-computed paragraphs on where the
+edge lives (in-page vs navigation) and on the goal increment (screen vs
+screen+task), calibration deciles + `calibration.png`, and six annotated
 qualitative screenshots → `artifacts/eval_report.md`.
 
 ### Stage 5 — External validation (`prepare_external.py` + `validate_external.py`) — answers O3
@@ -188,10 +201,11 @@ information into a rank statistic.
 
 | config | governs |
 |---|---|
-| `data.yaml` | split fractions, dwell filters, winsor percentile, paths |
+| `data.yaml` | split fractions, dwell filters, winsor percentile, screenshot download budgets + store-time recompression (`resolve:`), paths |
 | `baseline.yaml` | axTree sampling/caching/vocab, LightGBM params, early stopping |
-| `vlm.yaml` | checkpoint, LoRA r/α, image pixel budget, lr/epochs/batch/grad-accum, dry-run knobs, `include_task_title` ablation flag |
-| `eval.yaml` | TEST eval: batch size, parse fallback policy, calibration bins, qualitative count |
+| `vlm.yaml` | screen-only condition: checkpoint, LoRA r/α, image pixel budget, lr/epochs/batch/grad-accum, dry-run knobs |
+| `vlm_task.yaml` | screen+task condition — identical to `vlm.yaml` except `include_task_title: true` (+ its own output/card paths) |
+| `eval.yaml` | TEST eval: the `vlm_models` condition list, batch size, parse fallback policy, calibration bins, primary model, qualitative count |
 | `external.yaml` | source choice (tasksense/vsgui10k), aggregation, bootstrap CI knobs — the **only** yaml allowed to reference `data/external` |
 
 ### Tests — `tests/`
@@ -265,8 +279,9 @@ assignment) and model files (`baseline_lgbm.txt`, `vlm_ckpt/`).
 |---|---|
 | 1. Dataset (audit → labels → images → splits) | ✅ built — 206,925 rows, cards written |
 | 2. LightGBM baseline | ✅ trained + reported (MAE log 0.5084, ρ 0.4813 on TEST) |
-| 3. VLM QLoRA SFT | code + tests ready; ⏳ awaiting GPU run (`--dry-run` first) |
-| 4. TEST head-to-head (O2) | report path verified end-to-end; ⏳ awaiting VLM predictions |
+| 1b. Budgeted image resolution | mechanism ✅ built + probe-verified; ⏳ run full budgets (≈1 GB), then `--splits` refresh |
+| 3. VLM QLoRA SFT (screen-only + screen+task) | code + tests ready; ⏳ awaiting GPU runs (`--dry-run` first) |
+| 4. TEST head-to-head (O2, per-screen + task-level) | multi-condition report path verified end-to-end; ⏳ awaiting VLM predictions |
 | 5a. External set | ✅ built read-only (VSGUI10K, 894 screens + AIM metrics) + card |
 | 5b. Zero-shot external (O3) | guards verified; ⏳ awaiting the single GPU pass |
 | 5c. AIM theory-grounding analysis | ✅ implemented + smoke-tested; ⏳ runs post-hoc on 5b's cached predictions |
