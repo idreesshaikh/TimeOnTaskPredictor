@@ -26,6 +26,11 @@ set -euo pipefail
 
 cd ~/TimeOnTaskPredictor
 
+# No venv activation needed: `uv run` manages .venv itself — only the uv
+# binary must be reachable in the job shell.
+export PATH="$HOME/.local/bin:$PATH"
+command -v uv >/dev/null || { echo "ERROR: uv not on PATH" >&2; exit 1; }
+
 uv sync --extra vlm
 
 uv run python scripts/evaluate.py

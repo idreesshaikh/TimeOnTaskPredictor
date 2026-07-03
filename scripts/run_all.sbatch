@@ -36,6 +36,15 @@ set -euo pipefail
 cd ~/TimeOnTaskPredictor
 mkdir -p logs
 
+# No venv activation needed anywhere: `uv run` creates/updates .venv from
+# uv.lock and executes inside it. Only the uv binary must be reachable.
+export PATH="$HOME/.local/bin:$PATH"
+command -v uv >/dev/null || {
+    echo "ERROR: uv not on PATH in the job shell — install it on the login" \
+         "node (curl -LsSf https://astral.sh/uv/install.sh | sh)" >&2
+    exit 1
+}
+
 uv sync --extra vlm
 
 echo "═══ 0. Raw trajectories (idempotent download + extract) ═══"
