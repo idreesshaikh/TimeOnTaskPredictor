@@ -30,9 +30,13 @@ Source decision (recorded in artifacts/external_card.md):
    fully independent check of whether the model ranks screens like humans.
 
 Output layout (chmod'd read-only at the end):
-    data/external/vsgui10k/items.csv   [item_id, screenshot_path,
-                                        human_time_s, n_trials, category]
-    data/external/vsgui10k/images/     only the referenced screenshots
+    data/external/vsgui10k/items.csv        [item_id, screenshot_path,
+                                             human_time_s, n_trials, category]
+    data/external/vsgui10k/images/          only the referenced screenshots
+    data/external/vsgui10k/aim_metrics.csv  per-screen Aalto Interface Metrics
+                                            (visual clutter etc., shipped with
+                                            VSGUI10K) — consumed post-hoc by
+                                            scripts/analyze_aim.py
 """
 from __future__ import annotations
 
@@ -160,6 +164,15 @@ def prepare_vsgui10k(cfg: dict, zip_path: str | None
                 "category": r.category,
             })
 
+        # Per-screen AIM metrics (visual clutter models) ship with the zip —
+        # keep the rows for our screens so the theory-grounding analysis
+        # (APPROACH.md §5.1) needs no re-download.
+        with zf.open("data/vsgui10k_aim_results.csv") as fh:
+            aim = pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
+        kept_names = {k["item_id"] for k in kept}
+        aim = aim[aim["img_name"].isin(kept_names)]
+        aim.to_csv(root / "aim_metrics.csv", index=False)
+
     items = pd.DataFrame(kept, columns=ITEM_COLUMNS)
     stats = {
         "source": "vsgui10k",
@@ -169,6 +182,7 @@ def prepare_vsgui10k(cfg: dict, zip_path: str | None
         "screens_min_trials": int(vcfg["min_trials_per_screen"]),
         "screens_missing_image": missing_img,
         "n_items": len(items),
+        "n_aim_rows": int(len(aim)),
         "per_category": items["category"].value_counts().to_dict(),
         "human_time_s_quantiles": {
             f"p{int(q * 100)}": round(float(items["human_time_s"].quantile(q)), 2)
@@ -208,6 +222,15 @@ def write_card(cfg: dict, stats: dict, items: pd.DataFrame) -> None:
             "https://osf.io/hmg9b, public). ⚠️ It measures visual SEARCH "
             "time — one component of Time-on-Task — so rank agreement "
             "against it is a weaker but fully independent check."),
+        "- **In-domain primary = `web`** (pre-registered in "
+        "configs/external.yaml): the training corpus (WebChain) is web-only, "
+        "so the web category is the fair comparison; desktop/mobile screens "
+        "are kept and reported as out-of-domain transfer, never as the "
+        "headline.",
+        "- `aim_metrics.csv`: per-screen Aalto Interface Metrics (visual "
+        "clutter models), shipped with VSGUI10K — consumed post-hoc by the "
+        "theory-grounding analysis (`scripts/analyze_aim.py`), never by "
+        "training/tuning.",
         "",
         "## Contract (CLAUDE.md)",
         "",
@@ -231,6 +254,15 @@ def write_card(cfg: dict, stats: dict, items: pd.DataFrame) -> None:
     ]
     card.write_text("\n".join(lines))
     log.info(f"card → {card}")
+
+
+def make_writable(root: Path) -> None:
+    """Unlock a previously locked set for a --force rebuild (same source)."""
+    if not root.exists():
+        return
+    for p in [root, *root.rglob("*")]:
+        p.chmod(0o755 if p.is_dir() else 0o644)
+    log.info(f"{root} unlocked for rebuild")
 
 
 def make_read_only(root: Path) -> None:
@@ -259,6 +291,9 @@ def main() -> None:
                  f"only with --force, which re-derives it from the same "
                  f"public source).")
 
+    if args.force:
+        make_writable(root)
+
     if source == "tasksense":
         root, items, stats = prepare_tasksense(cfg)
     elif source == "vsgui10k":
@@ -269,8 +304,6 @@ def main() -> None:
     if items.empty:
         sys.exit("external set came out empty — refusing to write")
     items_csv = root / "items.csv"
-    if items_csv.exists():          # --force on a locked set
-        items_csv.chmod(0o644)
     items.to_csv(items_csv, index=False)
     log.info(f"{len(items)} items → {items_csv}")
 

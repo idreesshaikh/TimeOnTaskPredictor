@@ -37,3 +37,20 @@ report:
   ci: 0.95
   primary_category: web       # in-domain subset (model is web-trained);
                               # mobile/desktop reported as secondary
+
+aim:                          # theory-grounding analysis (APPROACH.md §5.1),
+                              # post-hoc over the CACHED zero-shot predictions
+  metrics_csv: data/external/vsgui10k/aim_metrics.csv
+  report: artifacts/aim_analysis.md
+  metrics:                    # AIM column → construct (readable name)
+    m4_0: contour_density
+    m5_0: figure_ground_contrast
+    m6_0: contour_congestion
+    m7_0: subband_entropy
+    m8_0: feature_congestion      # Rosenholtz clutter
+    m11_0: color_clusters_static
+    m12_0: color_clusters_dynamic
+    m13_0: luminance_sd
+    m15_0: colorfulness
+  bootstrap_samples: 10000
+  ci: 0.95

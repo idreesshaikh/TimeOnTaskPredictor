@@ -95,3 +95,27 @@ def calibration_table(
     table["gap_s"] = (table["mean_pred_s"] - table["mean_actual_s"]).abs()
     ece = float((table["n"] / len(df) * table["gap_s"]).sum())
     return table, ece
+
+
+def spearman_ci(x, y, *, n_boot: int, ci: float, seed: int) -> dict:
+    """Spearman rho with a seeded percentile-bootstrap CI over items.
+    Used by the external validation and the AIM theory-grounding analysis
+    so both report the same statistic the same way."""
+    from scipy.stats import spearmanr
+
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    rho = float(spearmanr(x, y)[0])
+    rng = np.random.default_rng(seed)
+    n = len(x)
+    boots = np.empty(n_boot)
+    for b in range(n_boot):
+        idx = rng.integers(0, n, n)
+        # a degenerate resample (constant array) yields nan; keep it — it
+        # widens the CI honestly rather than hiding instability
+        boots[b] = spearmanr(x[idx], y[idx])[0]
+    alpha = (1 - ci) / 2
+    lo, hi = np.nanquantile(boots, [alpha, 1 - alpha])
+    return {"n": n, "rho": round(rho, 4), "ci": ci,
+            "ci_lo": round(float(lo), 4), "ci_hi": round(float(hi), 4),
+            "n_boot": n_boot}
