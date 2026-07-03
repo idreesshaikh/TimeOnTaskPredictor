@@ -1,17 +1,21 @@
-# Screenshot → Per-Screen Time-on-Task
+# Time-on-Task Predictor
 
-Predict how long a user dwells on a web UI screen before acting, **from the
-screenshot alone**. Research question: how much of per-screen Time-on-Task is
-recoverable from the screen itself, independent of the user's goal or history?
+Predict how long a user dwells on a web UI screen before acting — and, by
+summing per-screen predictions within a trajectory, **how long the whole task
+takes**. Research question: how accurately can per-screen (and, by
+aggregation, whole-task) Time-on-Task be predicted from rendered UI screens,
+and how much of that predictability resides in the screen alone versus the
+user's stated task?
 
-Two models are compared on domain-disjoint splits of the
+The contestants are compared on identical, domain-disjoint rows of the
 [WebChain](https://huggingface.co/datasets/webagentlab/WebChain) trajectory
 corpus, with a zero-shot external validation at the end:
 
 | model | input | role |
 |---|---|---|
 | LightGBM | interpretable AX-tree / geometry features (no image) | the bar to beat |
-| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot only | the research model |
+| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot only | the science core: what the screen alone predicts |
+| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot + task title | the predictor; its gap to screen-only = the goal-driven share |
 
 ## Layout
 
@@ -52,17 +56,21 @@ bash scripts/download_minimal.sh
 # 1. Dataset: audit → labels → screenshots → splits + winsorized target
 uv run python scripts/build_dataset.py <json_dir> --audit
 uv run python scripts/build_dataset.py <json_dir> --labels
-uv run python scripts/build_dataset.py --resolve-images
+uv run python scripts/build_dataset.py --resolve-images   # trajectory-budgeted:
+#   whole tasks per split (configs/data.yaml resolve:), seeded prefix-stable,
+#   resumable, JPEG-recompressed (~1 GB, not the full ~122 GB corpus)
 uv run python scripts/build_dataset.py --splits
 
 # 2. No-image baseline (LightGBM; fetches AX-tree features, resumable cache)
 uv run python scripts/train_baseline.py
 
-# 3. VLM fine-tuning (CUDA GPU) — always smoke-test first
+# 3. VLM fine-tuning (CUDA GPU) — always smoke-test first; two conditions
 uv run python -m totvlm.train --config configs/vlm.yaml --dry-run
-uv run python -m totvlm.train --config configs/vlm.yaml
+uv run python -m totvlm.train --config configs/vlm.yaml        # screen-only
+uv run python -m totvlm.train --config configs/vlm_task.yaml   # screen+task
 
-# 4. Held-out TEST evaluation: VLM vs baseline vs floors
+# 4. Held-out TEST evaluation: floors vs LightGBM vs both VLM conditions,
+#    per-screen AND task-level (per-trajectory sums)
 uv run python scripts/evaluate.py
 
 # 5. External validation (READ-ONLY set, evaluated exactly once, zero-shot)

@@ -23,6 +23,7 @@ after 2×2 merge — see `estimate_visual_tokens`).
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import math
@@ -66,6 +67,19 @@ def cache_path(url: str, cache_dir: str | Path = CACHE_DIR) -> Path:
     return Path(cache_dir) / f"{cache_key(url)}.png"
 
 
+CACHE_EXTS = (".png", ".jpg")   # .png = original bytes; .jpg = recompressed
+
+
+def find_cached(url: str, cache_dir: str | Path = CACHE_DIR) -> Path | None:
+    """Cached file for a URL in either storage format, or None."""
+    stem = Path(cache_dir) / cache_key(url)
+    for ext in CACHE_EXTS:
+        p = stem.with_suffix(ext)
+        if p.exists():
+            return p
+    return None
+
+
 # ── Download one URL (retry w/ backoff; caller treats failure as non-fatal) ──
 
 class _HTTPStatusError(Exception):
@@ -85,19 +99,36 @@ def _fetch_bytes(client: httpx.Client, url: str) -> bytes:
     return resp.content
 
 
-def _download_one(client: httpx.Client, url: str, cache_dir: Path) -> Path | None:
-    """Fetch one URL into the cache. Returns the path, or None on failure."""
-    dest = cache_path(url, cache_dir)
-    if dest.exists():
+def _download_one(
+    client: httpx.Client, url: str, cache_dir: Path,
+    store: dict | None = None,
+) -> Path | None:
+    """Fetch one URL into the cache. Returns the path, or None on failure.
+
+    `store` (optional, from configs/data.yaml `resolve.store`): downscale to
+    `max_side` and re-encode as JPEG `jpeg_quality` at download time — the
+    training pipeline downscales anyway, so full-resolution PNGs only burn
+    disk (~3× savings). Already-cached files are used as-is either way.
+    """
+    dest = find_cached(url, cache_dir)
+    if dest:
         return dest
     try:
         data = _fetch_bytes(client, url)
+        if store:
+            img = Image.open(io.BytesIO(data)).convert("RGB")
+            img.thumbnail((store["max_side"], store["max_side"]))
+            dest = cache_path(url, cache_dir).with_suffix(".jpg")
+            tmp = dest.with_suffix(".tmp")
+            img.save(tmp, format="JPEG", quality=store["jpeg_quality"])
+        else:
+            dest = cache_path(url, cache_dir)
+            tmp = dest.with_suffix(".tmp")
+            tmp.write_bytes(data)
     except Exception as e:
         log.warning(f"image fetch failed: {url} ({e})")
         return None
-    tmp = dest.with_suffix(".tmp")
-    tmp.write_bytes(data)
-    tmp.rename(dest)          # atomic-ish: never leave half-written .png
+    tmp.rename(dest)          # atomic-ish: never leave half-written files
     return dest
 
 
@@ -121,6 +152,7 @@ def resolve_refs(
     concurrency: int = CONCURRENCY,
     timeout_s: float = TIMEOUT_S,
     client: httpx.Client | None = None,
+    store: dict | None = None,
 ) -> dict[str, str | None]:
     """
     Resolve unique refs → local path (str) or None. Never raises on a bad ref.
@@ -148,7 +180,7 @@ def resolve_refs(
     try:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = {
-                pool.submit(_download_one, client, u, cache_dir): u
+                pool.submit(_download_one, client, u, cache_dir, store): u
                 for u in url_refs
             }
             done = 0

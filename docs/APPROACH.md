@@ -7,13 +7,13 @@ This is the working companion to the proposal. The proposal states *what* is bei
 
 ## 0. The question, and the three objectives that operationalize it
 
-**Research question.** *To what extent can per-screen Time-on-Task be predicted from the visual and structural properties of a user interface screen alone — independent of the user's goal, prior familiarity, and interaction history?*
+**Research question (v2).** *How accurately can per-screen — and, by aggregation, whole-task — Time-on-Task be predicted from rendered user interface screens, and how much of that predictability resides in the screen alone versus the user's stated task?*
 
 This is one construct-level question. It is answered through three objectives, none of which is a separate research question — they are the means of answering the one:
 
 - **O1 — Labels.** Establish a faithful procedure for deriving per-screen Time-on-Task from real interaction traces, with documented treatment of confounds (system-response latency, repeated-exposure habituation).
-- **O2 — Recoverable signal.** Determine whether a screen-based learned model improves on an interpretable structural baseline, thereby *quantifying* the share of task time attributable to the screen itself.
-- **O3 — Generalization.** Test whether a predictor trained on one timing source agrees with human task-times measured independently, separating a genuine relationship from a training-source artifact.
+- **O2 — Recoverable signal.** Determine whether screen-based learned models improve on an interpretable structural baseline, and decompose the predictable share: two otherwise-identical conditions — *screen-only* (the stimulus-driven share) and *screen+task* (its gap to screen-only = the goal-driven share) — evaluated per screen **and rolled up to whole tasks** (per-trajectory sums of predictions vs. summed actual time — the data-driven analogue of KLM's operator sum, and the deliverable that makes "Time-on-Task Predictor" literally true).
+- **O3 — Generalization.** Test whether the screen-only predictor agrees with human times measured independently, zero-shot, separating a genuine relationship from a training-source artifact. (The external set has no task descriptions, so it validates the perceptual core.)
 
 Everything below serves O1–O3. If a piece of engineering serves none of them, it is a stretch goal.
 
@@ -82,6 +82,15 @@ Whether the `fullScreenshot` "before" timestamp is reliably close to the *previo
 
 The implemented pipeline (`scripts/build_dataset.py`, spec in `totvlm/labels.py`, oracles pinned in `tests/test_labels.py`) yields **206,925 screen-level rows** from ≈32k trajectories across **193 registrable domains** (train 135 / val 29 / test 29), ~32% navigation steps, winsor cap 24.954 s. Full accounting — including every exclusion count — lives in `artifacts/dataset_card.md`.
 
+### 2.7 Screenshot download strategy (disk/time bounded, trajectory-complete)
+
+Two facts make "download everything" wrong: ~182k unique screenshots ≈ 122 GB at observed sizes, and a missing image never corrupts a *label* (labels come from raw-JSON timestamps; unresolved rows are just flagged and excluded) — but it *would* punch holes in the task-level rollup. The implemented strategy (`configs/data.yaml → resolve:`):
+
+- **Sampling unit = a trajectory's rows within one split** (whole tasks; ~1.6% of trajectories cross domains/splits and are sampled per split part). No sampled task has missing screens.
+- **Seeded, prefix-stable order** per split with row budgets (default train 6000 / val 1200 / test 3000 ≈ 1,540 complete tasks): growing a budget only *adds* trajectories, so the cache is always reused; the run is resumable — start and stop it any time. This deliberately mirrors the baseline's prefix-stable axTree sampling.
+- **Store-time recompression**: downscale to 1280 px + JPEG q85 at download (~670 KB PNG → ~107 KB measured, 6×), since training reads images at ≤1024 px anyway. Default budgets ≈ **1.1 GB** on disk.
+- Continuous download-while-training was considered and rejected: it couples shared-GPU time to network reliability for no statistical gain — a resumable, budgeted pre-download achieves the same "grow it over time" property offline.
+
 ---
 
 ## 3. O2 / O3 — Model and compute
@@ -113,6 +122,8 @@ The training loop is Unsloth's official Qwen3-VL SFT pipeline (TRL `SFTTrainer` 
 ### 3.3 Output formulation — the choice that shapes engineering effort
 
 **Path A (implemented, the primary): structured text-output regression.** Train the model via standard SFT to answer with the pinned format **`dwell_seconds: X.X`** (winsorized dwell, one decimal; system prompt fixed in `totvlm/data.py`). Pure next-token SFT, runs through Unsloth's stock trainer unmodified, no custom head or loss to debug. At evaluation the number is parsed back with a tiered parser (exact format → labeled anywhere → bare number → fail) and scored as regression; parse-failure rates are always reported, with a documented fallback (internal eval imputes the train median; external validation excludes failures — a constant would fabricate rank information). Lowest engineering risk on a fixed time budget.
+
+**Two conditions, one flag (RQ v2).** The model is trained twice with identical recipes: `configs/vlm.yaml` (screen-only — the science core) and `configs/vlm_task.yaml` (`include_task_title: true` — the prompt also carries the task, making it the deployable *predictor*). The controlled gap between them is itself a result: the goal-driven share of dwell, per screen and at task level.
 
 **Path B (stretch): scalar regression head.** A small MLP on pooled hidden states, Huber loss on `log(1+dwell)`. More principled (true regression loss, no parsing) and there is precedent — scalar heads on causal-LM backbones are exactly how text reward models are built. The catch is that public examples are mostly text-only; wiring a head onto multimodal Qwen3-VL means manual glue (pulling pre-LM-head hidden states, a custom trainer) and less reference material. Worth it only after A works, as an architecture ablation — not required to answer the research question.
 
@@ -148,7 +159,8 @@ Trains in minutes, no GPU, gives a citable result in week one. The screen model'
 **Training.** Huber loss on `log(1+dwell)` (Path B) or SFT cross-entropy (Path A). All hyperparameter tuning happens on a domain-disjoint held-out slice of the *training* corpus — never on the independent-timing set. Report navigation vs. in-page diagnostics during training, not only at the end.
 
 **Evaluation (maps to objectives).**
-- **O2:** MAE/RMSE in log-seconds (plus back-transformed seconds) and Spearman rank correlation on held-out domains, screen model vs. structural baseline. Relative ranking matters as much as absolute error for a screening tool.
+- **O2 (per screen):** MAE/RMSE in log-seconds (plus back-transformed seconds) and Spearman rank correlation on held-out domains: floors < LightGBM < VLM(screen) < VLM(screen+task), all on identical rows. Relative ranking matters as much as absolute error for a screening tool.
+- **O2 (task level):** per-screen predictions summed within each trajectory and scored against the summed actual — the KLM-style operator-sum, learned. Totals cover only evaluated steps, identically for targets and every model, so the comparison stays apples-to-apples; the trajectory-complete image sampling (§2.7) exists precisely so sampled tasks have no missing screens.
 - **O1 confound check:** all metrics broken down by `is_navigation`, isolating the screen-predictable cognitive component from system-latency-driven intervals; calibration (decile reliability plot) to catch systematic bias.
 - **O3 — the headline generalization test:** run the fully-trained model zero-shot on a small, independently collected dataset of cleanly measured human times; report Spearman rank correlation **with a seeded bootstrap 95% CI**. **Touch this set exactly once.** Using it earlier — even to pick features — would convert it from an independent check into a tuning set and destroy the one thing that makes the generalization claim credible. (This is also why these labels are *comparative output*, never *training input*.) The exactly-once rule is enforced mechanically, not by discipline alone: the set is filesystem-read-only, the validation script refuses to re-run once predictions or the report exist, and a guard test fails the suite if any training/tuning file so much as references the path.
 
@@ -188,11 +200,12 @@ This analysis reads the model *through* the course's theory canon (clutter model
 1. ✅ Label pipeline + dataset card (coverage, winsorization cutoff, navigation fraction) — **O1**.
 2. ✅ Interpretable baseline, trained and reported — **O2 floor**.
 3. ✅ External set prepared, read-only, decision recorded (`artifacts/external_card.md`).
-4. ⏳ Memory smoke test on the real GPU (`--dry-run`; code + acceptance gate ready).
-5. ⏳ Qwen3-VL-4B + Unsloth QLoRA, Path A, trained on the corpus (entrypoint ready).
-6. ⏳ Held-out-domain evaluation: metrics, nav/in-page breakdown, calibration — **O2** (report path built and verified end-to-end; awaits VLM predictions).
-7. ⏳ Independent-timing zero-shot pass — once, mechanically guarded — **O3**.
-8. Write-up. If time remains: Path B head ablation, optional 8B confirmatory run, history variant (the `include_task_title` ablation flag is already wired).
+4. ⏳ Budgeted image resolution (§2.7; mechanism built + probe-verified — run the full budgets, then `--splits` to refresh `rows_final`).
+5. ⏳ Memory smoke test on the real GPU (`--dry-run`; code + acceptance gate ready).
+6. ⏳ Qwen3-VL-4B + Unsloth QLoRA, Path A — **both conditions**: `configs/vlm.yaml` (screen-only), then `configs/vlm_task.yaml` (screen+task).
+7. ⏳ Held-out-domain evaluation: per-screen AND task-level tables, nav/in-page breakdown, goal-increment paragraph, calibration — **O2** (multi-condition report path built and verified end-to-end; awaits VLM predictions).
+8. ⏳ Independent-timing zero-shot pass — once, mechanically guarded — **O3**; then the post-hoc AIM analysis (§5.1).
+9. Write-up. If time remains: Path B head ablation, optional 8B confirmatory run, history variant.
 
 ---
 

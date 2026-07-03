@@ -127,6 +127,47 @@ def add_split_column(
     return df
 
 
+def sample_trajectory_rows(
+    df: pd.DataFrame,
+    row_budgets: dict[str, int],
+    seed: int = SEED,
+) -> pd.Series:
+    """
+    Disk/time-bounded image-download sampling: boolean mask over `df` marking
+    the rows whose screenshots should be fetched.
+
+    - Sampling unit = a trajectory's rows WITHIN one split (a few trajectories
+      cross domains and therefore splits; their per-split parts are sampled
+      independently). Whole units are taken, so no sampled task has missing
+      screens — which keeps the task-level (per-trajectory sum) evaluation
+      honest.
+    - Per split, trajectory ids are sorted then shuffled with
+      `random.Random(seed)` and taken in order until the ROW budget is met
+      (the last trajectory may overshoot slightly). PREFIX-STABLE: growing a
+      budget only appends trajectories, so the image cache is always reused.
+    - `df` must carry `split` and `trajectory_id`. Splits absent from
+      `row_budgets` select nothing.
+    """
+    import random
+
+    mask = pd.Series(False, index=df.index)
+    for split, budget in row_budgets.items():
+        part = df[df["split"] == split]
+        if part.empty:
+            continue
+        sizes = part.groupby("trajectory_id").size()
+        ids = sorted(sizes.index)
+        random.Random(seed).shuffle(ids)
+        chosen, total = [], 0
+        for tid in ids:
+            if total >= budget:
+                break
+            chosen.append(tid)
+            total += int(sizes[tid])
+        mask.loc[part.index[part["trajectory_id"].isin(chosen)]] = True
+    return mask
+
+
 # ── Split-aware target preparation (CLAUDE.md §8–§9) ─────────────────────────
 # The winsor cap is a TRAIN-split statistic; computing it anywhere else leaks
 # val/test into the target definition. dwell_s_raw stays untouched for
