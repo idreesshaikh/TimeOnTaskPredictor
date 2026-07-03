@@ -70,16 +70,46 @@ uv run python -m totvlm.train --config configs/vlm.yaml        # screen-only
 uv run python -m totvlm.train --config configs/vlm_task.yaml   # screen+task
 
 # 4. Held-out TEST evaluation: floors vs LightGBM vs both VLM conditions,
-#    per-screen AND task-level (per-trajectory sums)
+#    per-screen AND task-level (per-trajectory sums) + the paper figure set
 uv run python scripts/evaluate.py
+uv run python scripts/make_figures.py    # CPU-only, regenerable anytime
 
 # 5. External validation (READ-ONLY set, evaluated exactly once, zero-shot)
+#    + AIM theory-grounding analysis over the cached predictions
 uv run python scripts/prepare_external.py
 uv run python scripts/validate_external.py
+uv run python scripts/analyze_aim.py
 ```
 
 Reports land in `artifacts/`: `dataset_card.md`, `baseline_report.md`,
-`vlm_train_card.md`, `eval_report.md`, `external_report.md`.
+`vlm_train_card.md`, `eval_report.md`, `external_report.md`,
+`aim_analysis.md`, and the figure set in `artifacts/figures/`.
+
+## Running on a SLURM cluster — one command
+
+```bash
+# one-time setup on the login node:
+uv run hf auth login           # WebChain is gated
+wandb login                    # or export WANDB_MODE=offline + `wandb sync`
+
+mkdir -p logs
+sbatch scripts/run_all.sbatch  # then watch wandb project `tot-vlm`
+```
+
+`run_all.sbatch` runs the ENTIRE experiment in one GPU job: raw download →
+dataset (audit/labels/screenshots/splits) → LightGBM baseline → both VLM
+conditions (each VRAM smoke-tested first) → TEST head-to-head + figures →
+external zero-shot + AIM analysis. Every stage is idempotent and fetching /
+training are resumable (training auto-resumes from the last epoch
+checkpoint) — **if the job hits its time limit, just resubmit it** and it
+continues where it stopped.
+
+Prefer parallel GPUs? `bash scripts/submit_all.sh` submits the same
+experiment as a 4-job dependency chain instead (both conditions train
+concurrently; evaluation and the external check follow automatically).
+
+All stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
+`qwen3vl4b-qlora-pathA`, `qwen3vl4b-qlora-pathA-task`, `eval-test`.
 
 ## Reproducibility contract (see SPEC.md for the full spec)
 

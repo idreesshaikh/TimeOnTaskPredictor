@@ -14,6 +14,10 @@ paths:
   report: artifacts/eval_report.md
   calibration_png: artifacts/calibration.png
   qualitative_dir: artifacts/qualitative
+  metrics_json: artifacts/eval_metrics.json          # machine-readable copy
+  predictions_parquet: artifacts/eval_predictions.parquet  # per-row pred
+                            # matrix (head-to-head rows × models) — the
+                            # input scripts/make_figures.py plots from
 
 # Every trained VLM condition entering the head-to-head. Each has its own
 # adapters + raw-decode cache; the predict stage fills whichever caches are
@@ -39,10 +43,20 @@ scoring:
   clip_pred_to_winsor: true # clip parsed preds to [0, train p95 cap] — the
                             # exact range the model was trained to emit
   calibration_bins: 10
+  task_min_steps: 2         # task-level table: only tasks with ≥ this many
+                            # covered screens (legacy scattered cache rows
+                            # create 1-screen "tasks" that are per-screen
+                            # rows in disguise); the filter is disclosed in
+                            # the report
 
 report:
   primary_model: "VLM (screen)"   # drives the calibration plot + qualitative
                                   # screenshots (the science core)
+
+logging:
+  report_to: wandb           # "wandb" or "none" — same knob as configs/vlm*.yaml
+  wandb_project: tot-vlm
+  run_name: eval-test
 
 qualitative:
   n: 6                      # 2 best / 2 median / 2 worst by |log error|

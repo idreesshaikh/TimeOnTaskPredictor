@@ -6,9 +6,9 @@
 
 | split | rows | domains | trajectories | %navigation | median dwell | p95 dwell | %capped | %img resolved |
 |---|---|---|---|---|---|---|---|---|
-| train | 142609 | 135 | 22318 | 31.59% | 4.729 s | 24.954 s | 5.0% | 0.99% |
-| val | 26317 | 29 | 4305 | 37.28% | 5.328 s | 23.478 s | 4.53% | 0.85% |
-| test | 37992 | 29 | 5256 | 25.22% | 4.575 s | 25.672 s | 5.23% | 0.95% |
+| train | 142609 | 135 | 22318 | 31.59% | 4.729 s | 24.954 s | 5.0% | 13.2% |
+| val | 26317 | 29 | 4305 | 37.28% | 5.328 s | 23.478 s | 4.53% | 7.35% |
+| test | 37992 | 29 | 5256 | 25.22% | 4.575 s | 25.672 s | 5.23% | 12.97% |
 
 ## Full stats (JSON)
 
@@ -38,7 +38,7 @@
         "p99": 59.231
       },
       "pct_capped_by_winsor": 5.0,
-      "pct_img_resolved": 0.99
+      "pct_img_resolved": 13.2
     },
     "val": {
       "rows": 26317,
@@ -55,7 +55,7 @@
         "p99": 59.404
       },
       "pct_capped_by_winsor": 4.53,
-      "pct_img_resolved": 0.85
+      "pct_img_resolved": 7.35
     },
     "test": {
       "rows": 37992,
@@ -72,7 +72,7 @@
         "p99": 65.88
       },
       "pct_capped_by_winsor": 5.23,
-      "pct_img_resolved": 0.95
+      "pct_img_resolved": 12.97
     }
   }
 }

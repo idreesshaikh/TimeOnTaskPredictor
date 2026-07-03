@@ -224,10 +224,11 @@ data/
 webchain_raw/
 webchain_dataset/
 checkpoints/
-artifacts/vlm_ckpt/
+artifacts/vlm_ckpt*/
 wandb/
+logs/
 
 # Extra
 /docs/
 src/Time_On_Task_Predictor.egg-info
-artifacts/vlm_task_ckpt/
+artifacts/vlm_task_ckpt*/

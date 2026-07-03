@@ -59,9 +59,18 @@ Row construction:
 3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
    → QLoRA adapters per condition + train cards (GPU; run both conditions)
 4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM < VLM screen <
-   VLM screen+task), per-screen AND task-level (per-trajectory sums) + eval_report.md
-5. `scripts/prepare_external.py` + `scripts/validate_external.py`
+   VLM screen+task), per-screen AND task-level (per-trajectory sums) +
+   eval_report.md + eval_metrics.json + eval_predictions.parquet
+5. `scripts/make_figures.py` → the paper figure set (artifacts/figures/),
+   CPU-only, rebuilt from cached artifacts — never runs a model
+6. `scripts/prepare_external.py` + `scripts/validate_external.py` +
+   `scripts/analyze_aim.py`
    → zero-shot external check + external_report.md (evaluate-once, guarded)
+
+Cluster: `sbatch scripts/run_all.sbatch` runs the ENTIRE experiment in one
+idempotent, resumable GPU job (resubmit on timeout — it continues).
+Alternative: `bash scripts/submit_all.sh` submits a 4-job dependency chain
+with both training conditions in parallel.
 
 ## Verified test oracles (use as pytest ground truth)
 Trajectory id `yjeXPEBxd5EACsDz4xPWx` → 3 rows:

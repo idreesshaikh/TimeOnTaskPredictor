@@ -94,6 +94,14 @@ def main():
     fcfg = cfg["features"]
     n_sample = args.sample_rows or fcfg["sample_rows"]
     paths = cfg["paths"]
+    lcfg = cfg.get("logging", {"report_to": "none"})
+
+    run = None
+    if lcfg["report_to"] == "wandb":
+        import wandb
+        run = wandb.init(
+            project=lcfg["wandb_project"], name=lcfg["run_name"], config=cfg
+        )
 
     # ── 1–2: load + exclusions (reported, never silent) ──────────────────────
     df = pd.read_parquet(paths["rows_final"])
@@ -107,6 +115,13 @@ def main():
         f"{n_total} rows → {len(df)} eligible "
         f"(-{n_no_split} unassigned split, -{n_no_axtree} no axTree URL)"
     )
+    if run is not None:
+        wandb.log({
+            "rows/total": n_total,
+            "rows/eligible": len(df),
+            "rows/excluded_no_split": n_no_split,
+            "rows/excluded_no_axtree": n_no_axtree,
+        })
 
     # ── 3: seeded prefix-stable sample ───────────────────────────────────────
     sampled = prefix_stable_sample(df, n_sample, seed)
@@ -148,10 +163,19 @@ def main():
 
     # ── 5: train + evaluate ──────────────────────────────────────────────────
     lgbm_params = dict(cfg["lightgbm"], random_state=seed)
+    wandb_callbacks = []
+    if run is not None:
+        wandb_callbacks.append(
+            lambda env: wandb.log(
+                {"val/l1": env.evaluation_result_list[0][2],
+                 "iteration": env.iteration}
+            )
+        )
     model = train_lgbm_baseline(
         x["train"], y["train"], x["val"], y["val"],
         params=lgbm_params,
         early_stopping_rounds=cfg["early_stopping_rounds"],
+        extra_callbacks=wandb_callbacks,
     )
     best_iter = model.best_iteration or lgbm_params["n_estimators"]
     log.info(f"best iteration: {best_iter}")
@@ -174,6 +198,22 @@ def main():
 
     importances = lgbm_feature_importances(model, cols)
     model.save_model(paths["model_out"])
+
+    if run is not None:
+        wandb.log({
+            "best_iteration": best_iter,
+            "calibration_ece_s": ece,
+            **{f"test/{k}": v for k, v in lgbm_metrics["overall"].items()},
+            **{f"floor/{name}/{k}": v
+               for name, m in floors.items() for k, v in m.items()},
+        })
+        wandb.log({
+            "feature_importances": wandb.Table(
+                columns=["feature", "gain", "pct"],
+                data=[[imp["feature"], imp["gain"], imp["pct"]]
+                      for imp in importances],
+            )
+        })
 
     # ── 6: report ────────────────────────────────────────────────────────────
     lines = [
@@ -256,6 +296,10 @@ def main():
     report.write_text("\n".join(lines))
     log.info(f"report → {report} · model → {paths['model_out']}")
     log.info(json.dumps(lgbm_metrics["overall"], indent=2))
+
+    if run is not None:
+        wandb.save(str(report))
+        wandb.finish()
 
 
 if __name__ == "__main__":

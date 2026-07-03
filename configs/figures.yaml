@@ -1,0 +1,36 @@
+# Paper figure factory (scripts/make_figures.py).
+# SPEC.md rule: ALL tunable numbers live here, never in code.
+# Figures are regenerable on any CPU machine from cached artifacts — the
+# script never runs a model and never touches the read-only external set
+# (guarded by tests/test_external_guard.py).
+seed: 42
+
+# task_min_steps / primary_model are read from the eval config so the
+# figures can never disagree with the tables in eval_report.md.
+eval_config: configs/eval.yaml
+
+paths:
+  rows_final: data/processed/rows_final.parquet
+  eval_metrics: artifacts/eval_metrics.json          # written by evaluate.py
+  eval_predictions: artifacts/eval_predictions.parquet
+  baseline_model: artifacts/baseline_lgbm.txt
+  out_dir: artifacts/figures
+  card: artifacts/figures/figures_card.md
+
+style:
+  dpi: 200                  # print-quality PNG
+  font_size: 9
+
+dwell_distribution:
+  bins: 60                  # log-spaced histogram bins
+
+scatter:
+  max_points: 4000          # seeded subsample if a panel exceeds this
+  alpha: 0.35
+  point_size: 9
+
+calibration:
+  n_bins: 10                # decile bins, same as the eval report
+
+feature_importance:
+  top_n: 15                 # gain-ranked LightGBM features shown
