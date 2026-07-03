@@ -97,6 +97,21 @@ def calibration_table(
     return table, ece
 
 
+def task_totals(group_ids, y_log) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Aggregate per-screen values to per-task totals (RQ v2, the KLM-successor
+    rollup): log space → seconds via expm1 → SUM within each task/trajectory
+    → back to log1p. Groups come out sorted by id, so calling this with the
+    same group_ids for targets and for every model's predictions yields
+    aligned arrays.
+
+    Returns (sorted unique group ids, log1p of per-group summed seconds).
+    """
+    seconds = pd.Series(np.expm1(np.asarray(y_log, dtype=float)))
+    totals = seconds.groupby(np.asarray(group_ids)).sum()
+    return totals.index.to_numpy(), np.log1p(totals.to_numpy())
+
+
 def spearman_ci(x, y, *, n_boot: int, ci: float, seed: int) -> dict:
     """Spearman rho with a seeded percentile-bootstrap CI over items.
     Used by the external validation and the AIM theory-grounding analysis
