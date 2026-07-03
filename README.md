@@ -85,7 +85,7 @@ Reports land in `artifacts/`: `dataset_card.md`, `baseline_report.md`,
 `vlm_train_card.md`, `eval_report.md`, `external_report.md`,
 `aim_analysis.md`, and the figure set in `artifacts/figures/`.
 
-## Running on a SLURM cluster — one command
+## Running on a SLURM cluster — two jobs
 
 ```bash
 # one-time setup on the login node:
@@ -93,20 +93,15 @@ uv run hf auth login           # WebChain is gated
 wandb login                    # or export WANDB_MODE=offline + `wandb sync`
 
 mkdir -p logs
-sbatch scripts/run_all.sbatch  # then watch wandb project `tot-vlm`
+sbatch scripts/setup.sbatch    # CPU: raw download → dataset → baseline → external prep
+# ...when it finishes:
+sbatch scripts/train.sbatch    # GPU: both VLM conditions → eval + figures → external
 ```
 
-`run_all.sbatch` runs the ENTIRE experiment in one GPU job: raw download →
-dataset (audit/labels/screenshots/splits) → LightGBM baseline → both VLM
-conditions (each VRAM smoke-tested first) → TEST head-to-head + figures →
-external zero-shot + AIM analysis. Every stage is idempotent and fetching /
-training are resumable (training auto-resumes from the last epoch
-checkpoint) — **if the job hits its time limit, just resubmit it** and it
-continues where it stopped.
-
-Prefer parallel GPUs? `bash scripts/submit_all.sh` submits the same
-experiment as a 4-job dependency chain instead (both conditions train
-concurrently; evaluation and the external check follow automatically).
+Every stage is idempotent and fetching / training are resumable (training
+auto-resumes from the last epoch checkpoint) — **if a job hits its time
+limit, just resubmit it** and it continues where it stopped. `train.sbatch`
+fails fast with a clear message if the setup outputs are missing.
 
 All stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
 `qwen3vl4b-qlora-pathA`, `qwen3vl4b-qlora-pathA-task`, `eval-test`.
