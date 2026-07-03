@@ -1,7 +1,7 @@
 #!/bin/bash
 # Download AND extract the raw WebChain trajectory JSON (gated — `hf login`
 # or `uv run hf auth login` first). Idempotent: skips whatever already
-# exists, so it is safe as stage 0 of scripts/run_all.sbatch.
+# exists, so it is safe as stage 0 of scripts/setup.sbatch.
 # Ends with the JSON at data/raw/all_json_files/ — the default input of
 # scripts/build_dataset.py.
 

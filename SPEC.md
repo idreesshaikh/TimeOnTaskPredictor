@@ -67,10 +67,10 @@ Row construction:
    `scripts/analyze_aim.py`
    → zero-shot external check + external_report.md (evaluate-once, guarded)
 
-Cluster: `sbatch scripts/run_all.sbatch` runs the ENTIRE experiment in one
-idempotent, resumable GPU job (resubmit on timeout — it continues).
-Alternative: `bash scripts/submit_all.sh` submits a 4-job dependency chain
-with both training conditions in parallel.
+Cluster: two idempotent, resumable jobs (resubmit on timeout — they continue).
+`sbatch scripts/setup.sbatch` (CPU: download → dataset → baseline → external
+prep), then `sbatch scripts/train.sbatch` (GPU: both conditions → eval +
+figures → external zero-shot + AIM).
 
 ## Verified test oracles (use as pytest ground truth)
 Trajectory id `yjeXPEBxd5EACsDz4xPWx` → 3 rows:
