@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,6 +100,13 @@ def winsor_cap_from_train(df: pd.DataFrame) -> float:
 # ── Stage 1: GPU prediction (cached, one cache per VLM condition) ─────────────
 
 
+def adapters_available(ref: str) -> bool:
+    """True if `ref` is a local adapter dir OR a HF hub id (`org/name`) —
+    a hub id runs the base model zero-shot (the is-fine-tuning-necessary
+    row), no local files needed."""
+    return Path(ref).exists() or re.fullmatch(r"[\w.-]+/[\w.-]+", ref) is not None
+
+
 def run_predict(
     cfg: dict, vcfg: dict, rows: pd.DataFrame, winsor_cap: float, mcfg: dict
 ) -> None:
@@ -114,7 +122,7 @@ def run_predict(
         )
 
     adapters = mcfg["adapters"]
-    if not Path(adapters).exists():
+    if not adapters_available(adapters):
         sys.exit(
             f"No trained adapters at {adapters} for {mcfg['name']!r} — "
             f"run totvlm.train with its config first."
@@ -695,7 +703,7 @@ def main() -> None:
         for mcfg in conditions:
             if Path(mcfg["preds"]).exists():
                 log.info(f"[{mcfg['name']}] using cached predictions: {mcfg['preds']}")
-            elif Path(mcfg["adapters"]).exists():
+            elif adapters_available(mcfg["adapters"]):
                 run_predict(cfg, vcfg, rows, winsor_cap_from_train(df), mcfg)
             else:
                 log.info(

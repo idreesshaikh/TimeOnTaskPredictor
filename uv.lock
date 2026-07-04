@@ -1401,6 +1401,7 @@ dependencies = [
 [package.optional-dependencies]
 vlm = [
     { name = "unsloth" },
+    { name = "xformers", marker = "sys_platform == 'linux'" },
 ]
 
 [package.dev-dependencies]
@@ -1434,6 +1435,7 @@ requires-dist = [
     { name = "transformers", specifier = "==5.5.0" },
     { name = "unsloth", marker = "extra == 'vlm'", specifier = ">=2025.10" },
     { name = "wandb", specifier = ">=0.27.2" },
+    { name = "xformers", marker = "sys_platform == 'linux' and extra == 'vlm'", specifier = ">=0.0.32" },
 ]
 provides-extras = ["vlm"]
 

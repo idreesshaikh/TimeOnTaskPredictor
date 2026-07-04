@@ -36,6 +36,7 @@ dependencies = [
 # Install with: uv sync --extra vlm
 vlm = [
     "unsloth>=2025.10",
+    "xformers>=0.0.32 ; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
