@@ -404,12 +404,14 @@ def build_inference_examples(
     max_side: int,
     min_pixels: int,
     max_pixels: int,
+    task_title: str | None = None,
 ) -> list[dict]:
     """
     Prompt-only chat examples (no gold turn) for arbitrary screenshots —
-    e.g. zero-shot external validation. Same system prompt and screen-only
-    user turn as training, so the frozen model sees exactly the format it
-    was tuned on.
+    e.g. zero-shot external validation or scripts/predict.py. Same system
+    prompt and user-turn format as training, so the model sees exactly the
+    format it was tuned on. `task_title` (applied to every image) matches
+    the screen+task condition; None matches screen-only.
     """
     return [
         {
@@ -420,7 +422,7 @@ def build_inference_examples(
                     min_pixels=min_pixels,
                     max_pixels=max_pixels,
                 ),
-                None, "", include_task_title=False,
+                task_title, "", include_task_title=task_title is not None,
             )[:-1],   # drop the (empty) assistant turn: prompt only
         }
         for p in img_paths

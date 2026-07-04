@@ -69,6 +69,10 @@ uv run python -m totvlm.train --config configs/vlm.yaml --dry-run
 uv run python -m totvlm.train --config configs/vlm.yaml        # screen-only
 uv run python -m totvlm.train --config configs/vlm_task.yaml   # screen+task
 
+# 3b. Play with the trained model on any screenshot(s) you like (GPU):
+uv run python scripts/predict.py my_screen.png
+uv run python scripts/predict.py seat_v1.png seat_v2.png --task "Pick a seat"
+
 # 4. Held-out TEST evaluation: floors vs LightGBM vs both VLM conditions,
 #    per-screen AND task-level (per-trajectory sums) + the paper figure set
 uv run python scripts/evaluate.py
