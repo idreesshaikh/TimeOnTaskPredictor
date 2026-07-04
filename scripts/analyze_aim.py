@@ -1,7 +1,7 @@
 """
 analyze_aim.py
 ==============
-Theory-grounding analysis (APPROACH.md §5.1): what does the model's "time
+Theory-grounding analysis (optional appendix): what does the model's "time
 sense" consist of, in terms of established computational models of
 perceptual load?
 

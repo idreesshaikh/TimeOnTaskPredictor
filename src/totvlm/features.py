@@ -23,17 +23,12 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import httpx
 import pandas as pd
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+
+from totvlm.fetch import fetch_all, fetch_bytes
 
 log = logging.getLogger(__name__)
 
@@ -101,23 +96,6 @@ def feature_cache_path(url: str, cache_dir: str | Path) -> Path:
     return Path(cache_dir) / f"{key}.json"
 
 
-class _HTTPStatusError(Exception):
-    pass
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=0.5, max=8),
-    retry=retry_if_exception_type((httpx.TransportError, _HTTPStatusError)),
-    reraise=True,
-)
-def _fetch_bytes(client: httpx.Client, url: str) -> bytes:
-    resp = client.get(url)
-    if resp.status_code != 200:
-        raise _HTTPStatusError(f"HTTP {resp.status_code} for {url}")
-    return resp.content
-
-
 def _features_for_url(
     client: httpx.Client, url: str, cache_dir: Path, max_depth: int
 ) -> dict[str, int] | None:
@@ -129,7 +107,7 @@ def _features_for_url(
         except json.JSONDecodeError:
             dest.unlink()  # half-written cache entry: refetch
     try:
-        tree = json.loads(_fetch_bytes(client, url))
+        tree = json.loads(fetch_bytes(client, url))
         feats = extract_axtree_features(tree, max_depth=max_depth)
     except Exception as e:
         log.warning(f"axtree fetch/parse failed: {url} ({e})")
@@ -152,33 +130,14 @@ def fetch_axtree_features(
     on-disk feature cache. Pass `client` to inject a mock transport in tests."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    urls = [u for u in dict.fromkeys(urls) if isinstance(u, str) and u]
-
-    own_client = client is None
-    if own_client:
-        client = httpx.Client(
-            timeout=timeout_s, follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (research)"},
-        )
-    out: dict[str, dict[str, int] | None] = {}
-    try:
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {
-                pool.submit(
-                    _features_for_url, client, u, cache_dir, max_depth
-                ): u
-                for u in urls
-            }
-            done = 0
-            for fut in as_completed(futures):
-                out[futures[fut]] = fut.result()
-                done += 1
-                if done % 1000 == 0:
-                    log.info(f"axtree features {done}/{len(urls)} ...")
-    finally:
-        if own_client:
-            client.close()
-    return out
+    return fetch_all(
+        urls,
+        lambda c, u: _features_for_url(c, u, cache_dir, max_depth),
+        concurrency=concurrency,
+        timeout_s=timeout_s,
+        client=client,
+        progress_label="axtree features",
+    )
 
 
 # ── Feature frame assembly ────────────────────────────────────────────────────

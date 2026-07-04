@@ -28,17 +28,12 @@ import json
 import logging
 import math
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import httpx
 from PIL import Image
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+
+from totvlm.fetch import fetch_all, fetch_bytes
 
 log = logging.getLogger(__name__)
 
@@ -82,23 +77,6 @@ def find_cached(url: str, cache_dir: str | Path = CACHE_DIR) -> Path | None:
 
 # ── Download one URL (retry w/ backoff; caller treats failure as non-fatal) ──
 
-class _HTTPStatusError(Exception):
-    pass
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=0.5, max=8),
-    retry=retry_if_exception_type((httpx.TransportError, _HTTPStatusError)),
-    reraise=True,
-)
-def _fetch_bytes(client: httpx.Client, url: str) -> bytes:
-    resp = client.get(url)
-    if resp.status_code != 200:
-        raise _HTTPStatusError(f"HTTP {resp.status_code} for {url}")
-    return resp.content
-
-
 def _download_one(
     client: httpx.Client, url: str, cache_dir: Path,
     store: dict | None = None,
@@ -114,7 +92,7 @@ def _download_one(
     if dest:
         return dest
     try:
-        data = _fetch_bytes(client, url)
+        data = fetch_bytes(client, url)
         if store:
             img = Image.open(io.BytesIO(data)).convert("RGB")
             img.thumbnail((store["max_side"], store["max_side"]))
@@ -171,29 +149,15 @@ def resolve_refs(
             p = find_hash_image(r, images_root)
             out[r] = str(p) if p else None
 
-    own_client = client is None
-    if own_client:
-        client = httpx.Client(
-            timeout=timeout_s, follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (research)"},
-        )
-    try:
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {
-                pool.submit(_download_one, client, u, cache_dir, store): u
-                for u in url_refs
-            }
-            done = 0
-            for fut in as_completed(futures):
-                url = futures[fut]
-                path = fut.result()
-                out[url] = str(path) if path else None
-                done += 1
-                if done % 1000 == 0:
-                    log.info(f"resolved {done}/{len(url_refs)} URLs ...")
-    finally:
-        if own_client:
-            client.close()
+    downloaded = fetch_all(
+        url_refs,
+        lambda c, u: _download_one(c, u, cache_dir, store),
+        concurrency=concurrency,
+        timeout_s=timeout_s,
+        client=client,
+        progress_label="resolved",
+    )
+    out.update({u: str(p) if p else None for u, p in downloaded.items()})
     return out
 
 

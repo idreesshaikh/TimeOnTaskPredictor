@@ -7,7 +7,7 @@ import pytest
 import tenacity
 from PIL import Image
 
-from totvlm import images
+from totvlm import fetch
 from totvlm.images import (
     cache_key,
     cache_path,
@@ -24,7 +24,7 @@ URL_BAD = "https://data.imean.tech/uploads/missing.png"
 @pytest.fixture(autouse=True)
 def _no_retry_wait(monkeypatch):
     """Keep retry/backoff logic but drop the sleeps so tests stay fast."""
-    monkeypatch.setattr(images._fetch_bytes.retry, "wait", tenacity.wait_fixed(0))
+    monkeypatch.setattr(fetch.fetch_bytes.retry, "wait", tenacity.wait_fixed(0))
 
 
 # ── Cache keys ────────────────────────────────────────────────────────────────

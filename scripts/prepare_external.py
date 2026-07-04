@@ -166,7 +166,7 @@ def prepare_vsgui10k(cfg: dict, zip_path: str | None
 
         # Per-screen AIM metrics (visual clutter models) ship with the zip —
         # keep the rows for our screens so the theory-grounding analysis
-        # (APPROACH.md §5.1) needs no re-download.
+        # (scripts/analyze_aim.py) needs no re-download.
         with zf.open("data/vsgui10k_aim_results.csv") as fh:
             aim = pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
         kept_names = {k["item_id"] for k in kept}

@@ -27,8 +27,9 @@ Two stages, all knobs in configs/eval.yaml:
      - artifacts/eval_report.md   per-screen head-to-head + nav breakdown
                                   + TASK-LEVEL rollup (per-trajectory sums —
                                   the KLM-successor claim) + calibration
-     - artifacts/calibration.png
      - artifacts/qualitative/     (6 annotated screenshots, pred vs actual)
+   Plots live in scripts/make_figures.py, which reads this stage's
+   eval_metrics.json + eval_predictions.parquet.
    Conditions whose cache is missing are listed as pending, never silently
    skipped.
 
@@ -366,46 +367,6 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
     )
 
 
-def save_calibration_png(cal: pd.DataFrame, model_name: str, dest: Path) -> None:
-    """Decile reliability plot: mean predicted vs mean actual seconds."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(5.5, 5.0), dpi=150)
-    lim = 1.05 * max(cal["mean_pred_s"].max(), cal["mean_actual_s"].max())
-    ax.plot(
-        [0, lim],
-        [0, lim],
-        ls="--",
-        lw=1,
-        c="#9aa0a6",
-        label="perfect calibration",
-        zorder=1,
-    )
-    ax.plot(cal["mean_pred_s"], cal["mean_actual_s"], c="#4059ad", lw=1.5, zorder=2)
-    ax.scatter(
-        cal["mean_pred_s"],
-        cal["mean_actual_s"],
-        s=28,
-        c="#4059ad",
-        zorder=3,
-        label="prediction decile",
-    )
-    ax.set_xlim(0, lim)
-    ax.set_ylim(0, lim)
-    ax.set_xlabel("mean predicted dwell (s)")
-    ax.set_ylabel("mean actual dwell (s)")
-    ax.set_title(f"{model_name} calibration on TEST\n(decile bins by prediction)")
-    ax.legend(frameon=False, loc="upper left")
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(dest)
-    plt.close(fig)
-
-
 def save_qualitative(
     rows: pd.DataFrame, n: int, banner_h: int, out_dir: Path, seed: int
 ) -> list[dict]:
@@ -472,14 +433,6 @@ def run_report(
     cfg_path: str,
 ) -> None:
     scfg = cfg["scoring"]
-    lcfg = cfg.get("logging", {"report_to": "none"})
-    run = None
-    if lcfg["report_to"] == "wandb":
-        import wandb
-
-        run = wandb.init(
-            project=lcfg["wandb_project"], name=lcfg["run_name"], config=cfg
-        )
     winsor_cap = winsor_cap_from_train(df)
     train_median_s = float(df.loc[df["split"] == "train", "dwell_s"].median())
 
@@ -555,8 +508,6 @@ def run_report(
     cal, ece = calibration_table(
         y_f, primary["vlm_pred_log"].to_numpy(), n_bins=scfg["calibration_bins"]
     )
-    cal_png = Path(cfg["paths"]["calibration_png"])
-    save_calibration_png(cal, primary_name, cal_png)
 
     qual_dir = Path(cfg["paths"]["qualitative_dir"])
     qual = save_qualitative(
@@ -673,9 +624,8 @@ def run_report(
         *[p + "\n" for p in paragraphs],
         f"## Calibration ({primary_name}, full eval set, decile bins by prediction)",
         "",
-        f"![calibration]({cal_png.name})",
-        "",
-        f"ECE-style weighted gap: **{ece:.2f} s**",
+        f"ECE-style weighted gap: **{ece:.2f} s** "
+        "(reliability plot: `scripts/make_figures.py` → fig_calibration)",
         "",
         "| bin | n | mean pred (s) | mean actual (s) | gap (s) |",
         "|---|---|---|---|---|",
@@ -706,7 +656,7 @@ def run_report(
     report = Path(cfg["paths"]["report"])
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines))
-    log.info(f"report → {report} · calibration → {cal_png} · qualitative → {qual_dir}/")
+    log.info(f"report → {report} · qualitative → {qual_dir}/")
     log.info(
         "per-screen MAE(log): "
         + json.dumps({m: head_metrics[m]["overall"]["mae_log"] for m in head_metrics})
@@ -715,34 +665,6 @@ def run_report(
         "task-level MAE(log): "
         + json.dumps({m: task_metrics[m]["mae_log"] for m in task_metrics})
     )
-
-    if run is not None:
-        import wandb
-
-        wandb.log(
-            {
-                "calibration_ece_s": ece,
-                **{
-                    f"screen/{name}/{subset}/{k}": v
-                    for name, by_nav in head_metrics.items()
-                    for subset, m in by_nav.items()
-                    for k, v in m.items()
-                },
-                **{
-                    f"task/{name}/{k}": v
-                    for name, m in task_metrics.items()
-                    for k, v in m.items()
-                },
-                **{
-                    f"parse/{name}/failure_rate": s["parse_failure_rate"]
-                    for name, s in vlm_stats.items()
-                },
-            }
-        )
-        wandb.log({"calibration": wandb.Image(str(cal_png))})
-        for f in (report, metrics_json):
-            wandb.save(str(f))
-        wandb.finish()
 
 
 def main() -> None:

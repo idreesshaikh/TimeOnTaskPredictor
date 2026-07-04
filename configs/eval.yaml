@@ -12,7 +12,6 @@ paths:
   rows_final: data/processed/rows_final.parquet
   baseline_model: artifacts/baseline_lgbm.txt
   report: artifacts/eval_report.md
-  calibration_png: artifacts/calibration.png
   qualitative_dir: artifacts/qualitative
   metrics_json: artifacts/eval_metrics.json          # machine-readable copy
   predictions_parquet: artifacts/eval_predictions.parquet  # per-row pred
@@ -50,13 +49,8 @@ scoring:
                             # the report
 
 report:
-  primary_model: "VLM (screen)"   # drives the calibration plot + qualitative
+  primary_model: "VLM (screen)"   # drives the calibration table + qualitative
                                   # screenshots (the science core)
-
-logging:
-  report_to: wandb           # "wandb" or "none" — same knob as configs/vlm*.yaml
-  wandb_project: tot-vlm
-  run_name: eval-test
 
 qualitative:
   n: 6                      # 2 best / 2 median / 2 worst by |log error|

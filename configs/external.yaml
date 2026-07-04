@@ -38,7 +38,7 @@ report:
   primary_category: web       # in-domain subset (model is web-trained);
                               # mobile/desktop reported as secondary
 
-aim:                          # theory-grounding analysis (APPROACH.md §5.1),
+aim:                          # theory-grounding analysis (scripts/analyze_aim.py),
                               # post-hoc over the CACHED zero-shot predictions
   metrics_csv: data/external/vsgui10k/aim_metrics.csv
   report: artifacts/aim_analysis.md
