@@ -1,25 +1,7 @@
-"""
-totvlm/images.py
-================
-Resolve row screenshots (`img_ref`) to cached local files + model-ready loader.
-
-Resolution rules
-----------------
-- http(s) ref  → download once to data/images_cache/<sha1(url)>.png
-  (httpx + tenacity backoff, bounded concurrency, failures logged NOT fatal,
-  skip when already cached — reruns are cheap and resumable).
-- opaque hash  → look for <hash>.<ext> under a local images root (a directory
-  you synced separately); absent → unresolved.
-- Rows whose ref does not resolve are kept and flagged (`img_resolved=False`);
-  they are excluded at TRAIN time, not at build time.
-
-Loader
-------
-`load_image()` opens → RGB → downscales so the long side ≤ `max_side`
-(default 1280) and optionally clamps total pixels into [min_pixels,
-max_pixels], bounding Qwen3-VL visual tokens (28 px effective patch grid
-after 2×2 merge — see `estimate_visual_tokens`).
-"""
+"""Resolve row screenshots (`img_ref`) to cached local files + model-ready
+loader. URL refs download once to data/images_cache/<sha1(url)>; hash refs
+resolve under a local images root. Unresolved rows are kept and flagged
+(`img_resolved=False`) — excluded at train time, not build time."""
 from __future__ import annotations
 
 import hashlib
@@ -51,8 +33,6 @@ def is_http_ref(ref: str | None) -> bool:
     return isinstance(ref, str) and ref.startswith(("https://", "http://"))
 
 
-# ── Cache keys ────────────────────────────────────────────────────────────────
-
 def cache_key(url: str) -> str:
     """Deterministic cache key: sha1 of the exact URL string."""
     return hashlib.sha1(url.encode("utf-8")).hexdigest()
@@ -75,19 +55,13 @@ def find_cached(url: str, cache_dir: str | Path = CACHE_DIR) -> Path | None:
     return None
 
 
-# ── Download one URL (retry w/ backoff; caller treats failure as non-fatal) ──
-
 def _download_one(
     client: httpx.Client, url: str, cache_dir: Path,
     store: dict | None = None,
 ) -> Path | None:
-    """Fetch one URL into the cache. Returns the path, or None on failure.
-
-    `store` (optional, from configs/data.yaml `resolve.store`): downscale to
-    `max_side` and re-encode as JPEG `jpeg_quality` at download time — the
-    training pipeline downscales anyway, so full-resolution PNGs only burn
-    disk (~3× savings). Already-cached files are used as-is either way.
-    """
+    """Fetch one URL into the cache; None on failure. `store` (configs/
+    data.yaml resolve.store) recompresses to JPEG at download time (~3× disk
+    savings — training downscales anyway)."""
     dest = find_cached(url, cache_dir)
     if dest:
         return dest
@@ -106,11 +80,9 @@ def _download_one(
     except Exception as e:
         log.warning(f"image fetch failed: {url} ({e})")
         return None
-    tmp.rename(dest)          # atomic-ish: never leave half-written files
+    tmp.rename(dest)          # never leave half-written files
     return dest
 
-
-# ── Hash refs: look under a local images root ────────────────────────────────
 
 def find_hash_image(ref: str, images_root: str | Path = IMAGES_ROOT) -> Path | None:
     root = Path(images_root)
@@ -121,8 +93,6 @@ def find_hash_image(ref: str, images_root: str | Path = IMAGES_ROOT) -> Path | N
     return None
 
 
-# ── Bulk resolver ─────────────────────────────────────────────────────────────
-
 def resolve_refs(
     refs: Iterable[str],
     cache_dir: str | Path = CACHE_DIR,
@@ -132,10 +102,8 @@ def resolve_refs(
     client: httpx.Client | None = None,
     store: dict | None = None,
 ) -> dict[str, str | None]:
-    """
-    Resolve unique refs → local path (str) or None. Never raises on a bad ref.
-    Pass `client` to inject a mock transport in tests.
-    """
+    """Resolve unique refs → local path (str) or None. Never raises on a bad
+    ref. Pass `client` to inject a mock transport in tests."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     refs = [r for r in dict.fromkeys(refs) if isinstance(r, str) and r]
@@ -161,8 +129,6 @@ def resolve_refs(
     return out
 
 
-# ── Model-ready loader ───────────────────────────────────────────────────────
-
 def fit_size(
     width: int,
     height: int,
@@ -170,11 +136,8 @@ def fit_size(
     min_pixels: int | None = None,
     max_pixels: int | None = None,
 ) -> tuple[int, int]:
-    """
-    Target (width, height) after bounding: long side ≤ max_side, then total
-    pixels clamped into [min_pixels, max_pixels]. Aspect ratio preserved;
-    never returns a dimension < 1.
-    """
+    """Target (w, h): long side ≤ max_side, total pixels clamped into
+    [min_pixels, max_pixels]. Aspect preserved; never returns < 1."""
     scale = min(1.0, max_side / max(width, height))
     if max_pixels is not None and (width * scale) * (height * scale) > max_pixels:
         scale = min(scale, math.sqrt(max_pixels / (width * height)))
@@ -182,8 +145,7 @@ def fit_size(
         scale = max(scale, math.sqrt(min_pixels / (width * height)))
     w, h = max(1, round(width * scale)), max(1, round(height * scale))
     if max_pixels is not None and w * h > max_pixels:
-        # rounding can push a few pixels past the cap — max_pixels is a hard
-        # budget (visual tokens / VRAM), so floor instead
+        # max_pixels is a hard VRAM budget — floor when rounding overshoots
         w, h = max(1, math.floor(width * scale)), max(1, math.floor(height * scale))
     return w, h
 
@@ -207,8 +169,6 @@ def load_image(
         img = img.resize(target, Image.LANCZOS)
     return img
 
-
-# ── Resolution report ────────────────────────────────────────────────────────
 
 def write_resolution_report(stats: dict, out_path: str | Path) -> None:
     out_path = Path(out_path)

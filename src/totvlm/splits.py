@@ -1,19 +1,7 @@
-"""
-totvlm/splits.py
-================
-Domain-disjoint train/val/test splits (CLAUDE.md non-negotiable rule).
-
-- Unit of assignment = REGISTRABLE DOMAIN (eTLD+1). A domain lives in exactly
-  one of {train, val, test}; rows inherit their domain's split.
-- 70/15/15 BY DOMAIN COUNT (row counts per split will differ — a few domains
-  dominate row volume; the dataset card reports both).
-- Deterministic: domains are sorted, then shuffled with `random.Random(seed)`,
-  seed 42. Assignments are saved to artifacts/splits.json and REUSED — if the
-  file exists, it is loaded, never recomputed, so every stage sees the same
-  split even as the row set evolves.
-- Rows whose registrable_domain is missing (or unseen by the saved assignment)
-  get split=None and are excluded everywhere; counts are reported, not hidden.
-"""
+"""Domain-disjoint train/val/test splits (CLAUDE.md rule): unit = registrable
+domain (eTLD+1), 70/15/15 by domain count, seeded shuffle. Assignments are
+saved to artifacts/splits.json and REUSED, never recomputed. Rows with a
+missing/unassigned domain get split=None and are excluded everywhere."""
 from __future__ import annotations
 
 import json
@@ -132,22 +120,10 @@ def sample_trajectory_rows(
     row_budgets: dict[str, int],
     seed: int = SEED,
 ) -> pd.Series:
-    """
-    Disk/time-bounded image-download sampling: boolean mask over `df` marking
-    the rows whose screenshots should be fetched.
-
-    - Sampling unit = a trajectory's rows WITHIN one split (a few trajectories
-      cross domains and therefore splits; their per-split parts are sampled
-      independently). Whole units are taken, so no sampled task has missing
-      screens — which keeps the task-level (per-trajectory sum) evaluation
-      honest.
-    - Per split, trajectory ids are sorted then shuffled with
-      `random.Random(seed)` and taken in order until the ROW budget is met
-      (the last trajectory may overshoot slightly). PREFIX-STABLE: growing a
-      budget only appends trajectories, so the image cache is always reused.
-    - `df` must carry `split` and `trajectory_id`. Splits absent from
-      `row_budgets` select nothing.
-    """
+    """Boolean mask marking rows whose screenshots to fetch. Whole
+    trajectories are taken per split (so no sampled task has missing screens),
+    in seeded-shuffle order until the row budget is met. PREFIX-STABLE:
+    growing a budget only appends trajectories — the cache is always reused."""
     import random
 
     mask = pd.Series(False, index=df.index)
@@ -168,10 +144,8 @@ def sample_trajectory_rows(
     return mask
 
 
-# ── Split-aware target preparation (CLAUDE.md §8–§9) ─────────────────────────
-# The winsor cap is a TRAIN-split statistic; computing it anywhere else leaks
-# val/test into the target definition. dwell_s_raw stays untouched for
-# reporting; the model target is y = log1p(winsorized dwell).
+# The winsor cap is a TRAIN-split statistic — computing it anywhere else
+# leaks val/test into the target definition (CLAUDE.md §8–§9).
 
 def train_winsor_cap(
     df: pd.DataFrame,

@@ -5,9 +5,8 @@ seed: 42
 
 vlm_config: configs/vlm.yaml   # prompt/image knobs must match training
 
-# Source: tasksense (first choice) or vsgui10k (documented fallback).
-# TaskSense (arXiv 2511.09309) released no screenshots/human times as of
-# 2026-07-03 — see artifacts/external_card.md for the decision record.
+# tasksense (first choice, never released — see artifacts/external_card.md)
+# or vsgui10k (documented fallback)
 source: vsgui10k
 
 paths:

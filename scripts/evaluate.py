@@ -1,46 +1,16 @@
-"""
-evaluate.py
-===========
-TEST-split head-to-head (O2, RQ v2): how well is Time-on-Task predicted
-per screen AND per task — and how much of that predictability resides in
-the screen alone versus the user's stated task?
+"""TEST-split head-to-head: floors < LightGBM < VLM(screen) < VLM(screen+task),
+per screen AND per task (per-trajectory sums).
 
     uv run python scripts/evaluate.py [--config configs/eval.yaml]
                                       [--predict-only | --report-only]
 
-Contestants (configs/eval.yaml `vlm_models`, on identical rows):
-    floors < LightGBM (no image) < VLM (screen) < VLM (screen+task)
-The screen-only condition is the science core (what the screen alone
-predicts); screen+task is the deliverable predictor; their gap estimates
-the goal-driven share of dwell.
-
-Two stages, all knobs in configs/eval.yaml:
-
-1. PREDICT (CUDA GPU): for each configured VLM condition whose raw-decode
-   cache is missing, load its adapters and batch-decode every TEST row with
-   a resolved screenshot. Re-running the report never re-runs the GPU.
-
-2. REPORT (CPU, any machine): parse raw outputs (lenient tiers; failures
-   imputed with the TRAIN median and the rate reported — never hidden),
-   reload the LightGBM baseline and score it on the SAME rows (axTree
-   features fetched via the resumable cache), compute floors, and write:
-     - artifacts/eval_report.md   per-screen head-to-head + nav breakdown
-                                  + TASK-LEVEL rollup (per-trajectory sums —
-                                  the KLM-successor claim) + calibration
-     - artifacts/qualitative/     (6 annotated screenshots, pred vs actual)
-   Plots live in scripts/make_figures.py, which reads this stage's
-   eval_metrics.json + eval_predictions.parquet.
-   Conditions whose cache is missing are listed as pending, never silently
-   skipped.
-
-Evaluation set = TEST rows with img_resolved. The head-to-head uses the
-subset where the baseline's axTree also resolved, so every model is scored
-on identical rows; full-eval-set VLM metrics are reported too. Task-level
-totals sum ONLY covered steps — identically for targets and every model —
-so the comparison stays apples-to-apples. This evaluates the internal TEST
-split only — the read-only external validation set is untouched (see
-scripts/validate_external.py).
-"""
+Stage 1 PREDICT (GPU): batch-decode TEST rows per condition, cached — the
+report never re-runs the GPU. Stage 2 REPORT (CPU): lenient parse (failures
+imputed with the TRAIN median, rate reported), score the baseline + floors on
+the SAME rows, write eval_report.md / eval_metrics.json /
+eval_predictions.parquet + qualitative screenshots. Head-to-head rows =
+img_resolved AND axTree-resolved so every model sees identical rows; plots
+live in make_figures.py. The read-only external set is untouched here."""
 
 from __future__ import annotations
 
@@ -80,7 +50,7 @@ KEY = ["trajectory_id", "tab_id", "unit_index"]
 SUBSETS = ("overall", "navigation", "in_page")
 
 
-# ── Shared data selection ─────────────────────────────────────────────────────
+# Shared data selection
 
 
 def eval_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -97,7 +67,7 @@ def winsor_cap_from_train(df: pd.DataFrame) -> float:
     return float(df.loc[df["split"] == "train", "dwell_s"].max())
 
 
-# ── Stage 1: GPU prediction (cached, one cache per VLM condition) ─────────────
+# Stage 1: GPU prediction (cached, one cache per VLM condition)
 
 
 def adapters_available(ref: str) -> bool:
@@ -165,7 +135,7 @@ def run_predict(
     torch.cuda.empty_cache()
 
 
-# ── Stage 2a: parse VLM outputs (fallback documented, rate reported) ──────────
+# Stage 2a: parse VLM outputs (fallback documented, rate reported)
 
 
 def parse_vlm_preds(
@@ -214,7 +184,7 @@ def parse_vlm_preds(
     return merged, stats
 
 
-# ── Stage 2b: baseline + floors on the same rows ──────────────────────────────
+# Stage 2b: baseline + floors on the same rows
 
 
 def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
@@ -255,7 +225,7 @@ def baseline_preds(cfg: dict, bcfg: dict, rows: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# ── Report pieces ─────────────────────────────────────────────────────────────
+# Report pieces
 
 
 def metrics_table(
@@ -428,7 +398,7 @@ def save_qualitative(
     return entries
 
 
-# ── Stage 2: report ───────────────────────────────────────────────────────────
+# Stage 2: report
 
 
 def run_report(

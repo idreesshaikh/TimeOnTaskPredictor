@@ -1,10 +1,9 @@
-# TEST-split evaluation (O2): VLM conditions vs LightGBM vs floors,
-# per-screen AND aggregated to task level (RQ v2).
-# CLAUDE.md rule: ALL tunable numbers live here, never in code.
+# TEST-split evaluation: VLM conditions vs LightGBM vs floors, per screen
+# AND per task.
 seed: 42
 
-# Image/prompt knobs MUST match training; axtree knobs MUST match the
-# baseline run — both are read from the configs that produced those models.
+# image/prompt knobs MUST match training; axtree knobs MUST match the
+# baseline run — read from the configs that produced those models
 vlm_config: configs/vlm.yaml
 baseline_config: configs/baseline.yaml
 
@@ -13,15 +12,11 @@ paths:
   baseline_model: artifacts/baseline_lgbm.txt
   report: artifacts/eval_report.md
   qualitative_dir: artifacts/qualitative
-  metrics_json: artifacts/eval_metrics.json          # machine-readable copy
-  predictions_parquet: artifacts/eval_predictions.parquet  # per-row pred
-                            # matrix (head-to-head rows × models) — the
-                            # input scripts/make_figures.py plots from
+  metrics_json: artifacts/eval_metrics.json
+  predictions_parquet: artifacts/eval_predictions.parquet  # make_figures input
 
-# Every trained VLM condition entering the head-to-head. Each has its own
-# adapters + raw-decode cache; the predict stage fills whichever caches are
-# missing, and the report includes whichever exist (missing → listed as
-# pending, never silently skipped).
+# One entry per head-to-head condition; caches are filled if missing,
+# missing conditions are listed as pending, never silently skipped.
 vlm_models:
   - name: "VLM (screen)"            # science core: what the screen ALONE predicts
     adapters: artifacts/vlm_ckpt/final
@@ -44,20 +39,13 @@ predict:                    # GPU stage
   max_new_tokens: 12        # "dwell_seconds: 9999.9" ≈ 10 tokens
 
 scoring:
-  fallback: train_median    # unparseable output → TRAIN median winsorized
-                            # dwell_s; the imputation RATE is always reported
-  clip_pred_to_winsor: true # clip parsed preds to [0, train p95 cap] — the
-                            # exact range the model was trained to emit
+  fallback: train_median    # unparseable → TRAIN median; rate always reported
+  clip_pred_to_winsor: true # clip preds to the range the model was trained on
   calibration_bins: 10
-  task_min_steps: 2         # task-level table: only tasks with ≥ this many
-                            # covered screens (legacy scattered cache rows
-                            # create 1-screen "tasks" that are per-screen
-                            # rows in disguise); the filter is disclosed in
-                            # the report
+  task_min_steps: 2         # 1-screen "tasks" are per-screen rows in disguise
 
 report:
-  primary_model: "VLM (screen)"   # drives the calibration table + qualitative
-                                  # screenshots (the science core)
+  primary_model: "VLM (screen)"   # drives calibration table + qualitative
 
 qualitative:
   n: 6                      # 2 best / 2 median / 2 worst by |log error|

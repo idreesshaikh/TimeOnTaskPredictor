@@ -1,10 +1,6 @@
-# Qwen3-VL QLoRA SFT — the TASK-AWARE condition of RQ v2: same recipe as
-# configs/vlm.yaml in every respect EXCEPT the prompt also carries the task
-# title. The screen-only run (configs/vlm.yaml) isolates what the screen
-# alone predicts; the gap between the two conditions measures the
-# goal-driven share of dwell. Keep every other knob identical so the
-# comparison stays controlled.
-# CLAUDE.md rule: ALL tunable numbers live here, never in code.
+# The TASK-AWARE condition: identical to configs/vlm.yaml EXCEPT the prompt
+# also carries the task title — keep every other knob the same so the gap
+# between the two conditions measures the goal-driven share of dwell.
 seed: 42
 
 paths:

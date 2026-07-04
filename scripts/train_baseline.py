@@ -1,23 +1,11 @@
-"""
-train_baseline.py
-=================
-Train the no-image LightGBM baseline — the bar the VLM must beat.
+"""Train the no-image LightGBM baseline — the bar the VLM must beat.
 
     uv run python scripts/train_baseline.py [--config configs/baseline.yaml]
                                             [--sample-rows N]
 
-Pipeline (all knobs in configs/baseline.yaml):
-1. Load rows_final.parquet (split + winsorized target already assigned).
-2. Exclude rows without a split or without an axTree URL (counted, reported).
-3. Take a seeded PREFIX-STABLE sample of eligible rows (deterministic shuffle,
-   first N): smaller runs are strict prefixes of larger ones, so the on-disk
-   axTree-feature cache is always reused when N grows.
-4. Fetch axTrees for the sampled rows, extract features, cache features only
-   (~1.2 MB/tree × ~182k trees ≈ 210 GB makes mirroring trees infeasible).
-5. Train on TRAIN, early-stop on VAL l1, evaluate TEST once via totvlm.scoring
-   (overall + navigation/in-page + calibration), plus mean/median floors.
-6. Write artifacts/baseline_report.md + the fitted booster.
-"""
+Seeded PREFIX-STABLE row sample (growing N reuses the axTree-feature cache) →
+fetch features → train on TRAIN, early-stop on VAL, evaluate TEST once via
+totvlm.scoring (+ mean/median floors) → baseline_report.md + booster."""
 from __future__ import annotations
 
 import argparse
@@ -103,7 +91,7 @@ def main():
             project=lcfg["wandb_project"], name=lcfg["run_name"], config=cfg
         )
 
-    # ── 1–2: load + exclusions (reported, never silent) ──────────────────────
+    # 1–2: load + exclusions (reported, never silent)
     df = pd.read_parquet(paths["rows_final"])
     n_total = len(df)
     df = df[df["split"].notna()]
@@ -123,11 +111,11 @@ def main():
             "rows/excluded_no_axtree": n_no_axtree,
         })
 
-    # ── 3: seeded prefix-stable sample ───────────────────────────────────────
+    # 3: seeded prefix-stable sample
     sampled = prefix_stable_sample(df, n_sample, seed)
     log.info(f"sampled {len(sampled)} rows (seed {seed}, prefix-stable)")
 
-    # ── 4: fetch axTree features (resumable feature-only cache) ──────────────
+    # 4: fetch axTree features (resumable feature-only cache)
     feats = fetch_axtree_features(
         sampled["axtree_ref"],
         cache_dir=fcfg["axtree_cache_dir"],
@@ -161,7 +149,7 @@ def main():
     y = {s: parts[s]["y"].to_numpy() for s in SPLIT_ORDER}
     nav = {s: parts[s]["is_navigation"].to_numpy() for s in SPLIT_ORDER}
 
-    # ── 5: train + evaluate ──────────────────────────────────────────────────
+    # 5: train + evaluate
     lgbm_params = dict(cfg["lightgbm"], random_state=seed)
     wandb_callbacks = []
     if run is not None:
@@ -215,7 +203,7 @@ def main():
             )
         })
 
-    # ── 6: report ────────────────────────────────────────────────────────────
+    # 6: report
     lines = [
         "# No-image LightGBM baseline report",
         "",

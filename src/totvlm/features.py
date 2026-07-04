@@ -1,22 +1,8 @@
-"""
-totvlm/features.py
-==================
-Interpretable no-image features for the LightGBM baseline.
-
-Two sources:
-1. AX tree (needs one fetch per row): element/interactive/link/button/input
-   counts + visible-text length. Trees average ~1.2 MB, and the corpus has
-   ~182k unique tree URLs (~210 GB) — far too large to mirror. So we fetch a
-   tree, extract the tiny feature vector, CACHE ONLY THE FEATURES
-   (data/axtree_features_cache/<sha1(url)>.json), and discard the tree.
-   Reruns are cheap and resumable; failures are logged, not cached, so a
-   rerun retries them.
-2. Row columns already on disk (free): click-target area (rect w*h),
-   action_type one-hot, is_navigation, unit_index.
-
-Rows without an axTree URL — or whose fetch/parse fails — are EXCLUDED from
-the baseline; the entrypoint reports how many (never silently).
-"""
+"""Interpretable no-image features for the LightGBM baseline: axTree counts
+(trees are ~1.2 MB × 182k URLs — fetch each once, cache ONLY the tiny feature
+vector, discard the tree) plus free row columns (click-target area, action
+one-hot, nav flag). Rows whose axTree fetch/parse fails are EXCLUDED and
+counted, never silently dropped."""
 from __future__ import annotations
 
 import hashlib
@@ -32,7 +18,7 @@ from totvlm.fetch import fetch_all, fetch_bytes
 
 log = logging.getLogger(__name__)
 
-# ── AX tree vocabulary (roles are ARIA-ish; html_tag disambiguates) ──────────
+# ARIA-ish roles; html_tag disambiguates role-less nodes
 INTERACTIVE_ROLES = {
     "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
     "menuitem", "menuitemcheckbox", "menuitemradio", "tab", "option",
@@ -55,13 +41,11 @@ AXTREE_FEATURE_NAMES = (
 
 
 def extract_axtree_features(tree, max_depth: int = 80) -> dict[str, int]:
-    """Walk one tree (dict, or list of root dicts) and count what we keep.
-    Visible-text length = total `name` length over LEAF nodes only — container
-    names repeat their children's text, so counting every node double-counts."""
+    """Count features over one tree. Text length uses LEAF `name`s only —
+    container names repeat their children's text (double-counting)."""
     counts = dict.fromkeys(AXTREE_FEATURE_NAMES, 0)
     roots = tree if isinstance(tree, list) else [tree]
-    # Iterative DFS with explicit depth guard (trees can be deep and cyclic-ish
-    # data would otherwise recurse forever).
+    # iterative DFS with depth guard: trees can be deep / cyclic-ish
     stack = [(n, 0) for n in roots if isinstance(n, dict)]
     while stack:
         node, depth = stack.pop()
@@ -88,8 +72,6 @@ def extract_axtree_features(tree, max_depth: int = 80) -> dict[str, int]:
         )
     return counts
 
-
-# ── Fetch + feature cache (features only — never the tree) ───────────────────
 
 def feature_cache_path(url: str, cache_dir: str | Path) -> Path:
     key = hashlib.sha1(url.encode("utf-8")).hexdigest()
@@ -139,8 +121,6 @@ def fetch_axtree_features(
         progress_label="axtree features",
     )
 
-
-# ── Feature frame assembly ────────────────────────────────────────────────────
 
 def build_feature_frame(
     df: pd.DataFrame,

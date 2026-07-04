@@ -1,43 +1,17 @@
-"""
-prepare_external.py
-===================
-Build the READ-ONLY external validation set under data/external/ (CLAUDE.md:
-evaluated exactly once, zero-shot; NEVER used to pick features,
-hyperparameters, thresholds, or the winsorization cap; never referenced from
-training/tuning code — enforced by tests/test_external_guard.py).
+"""Build the READ-ONLY external validation set under data/external/
+(evaluated exactly once, zero-shot; never feeds training/tuning — enforced by
+tests/test_external_guard.py).
 
     uv run python scripts/prepare_external.py [--config configs/external.yaml]
                                               [--zip /path/to/VSGUI10K.zip]
 
-Source decision (recorded in artifacts/external_card.md):
-
-1. FIRST CHOICE — TaskSense (Yin et al., arXiv 2511.09309): measured human
-   completion times over GUI tasks. As of 2026-07-03 the paper releases NO
-   dataset, code, screenshots, or per-item human times (checked arxiv.org
-   listing + web search; only fitted difficulty constants appear in the
-   paper, without the underlying screenshots — so there is nothing to
-   transcribe into a screenshot→time set). If that changes, drop the
-   transcription at data/external/tasksense/tasksense.csv
-   [item_id, screenshot_path, human_time_s] and run with `source: tasksense`.
-
-2. DOCUMENTED FALLBACK — VSGUI10K (Putkonen et al. 2025, OSF osf.io/hmg9b,
-   public): 10,282 visual-search trials over 894 everyday GUI screenshots
-   (web/desktop/mobile) with eye-tracking. Per-trial search time = last
-   fixation timestamp within the trial's visual-search phase (img_type=2);
-   per-screen human_time_s = the aggregate (median) over target-present
-   trials. CAVEAT (also stated in every report): this measures visual
-   SEARCH time — one component of Time-on-Task — so it is a weaker but
-   fully independent check of whether the model ranks screens like humans.
-
-Output layout (chmod'd read-only at the end):
-    data/external/vsgui10k/items.csv        [item_id, screenshot_path,
-                                             human_time_s, n_trials, category]
-    data/external/vsgui10k/images/          only the referenced screenshots
-    data/external/vsgui10k/aim_metrics.csv  per-screen Aalto Interface Metrics
-                                            (visual clutter etc., shipped with
-                                            VSGUI10K) — consumed post-hoc by
-                                            scripts/analyze_aim.py
-"""
+Source = VSGUI10K (Putkonen et al. 2025, osf.io/hmg9b): per-screen
+human_time_s = median visual-search time over target-present trials.
+CAVEAT (stated in every report): search time is one COMPONENT of
+Time-on-Task — a weaker but fully independent rank check. (First choice
+TaskSense was never released — checked 2026-07-03; if that changes, drop a
+[item_id, screenshot_path, human_time_s] csv and run with source: tasksense.)
+Outputs (chmod'd read-only): items.csv, images/, aim_metrics.csv."""
 from __future__ import annotations
 
 import argparse
@@ -67,7 +41,7 @@ ITEM_COLUMNS = ["item_id", "screenshot_path", "human_time_s", "n_trials",
                 "category"]
 
 
-# ── TaskSense (first choice — manual transcription, if it ever exists) ────────
+# TaskSense (first choice — manual transcription, if it ever exists)
 
 def prepare_tasksense(cfg: dict) -> tuple[Path, pd.DataFrame, dict]:
     csv = Path(cfg["tasksense"]["csv"])
@@ -89,7 +63,7 @@ def prepare_tasksense(cfg: dict) -> tuple[Path, pd.DataFrame, dict]:
     return csv.parent, df[ITEM_COLUMNS], stats
 
 
-# ── VSGUI10K (documented fallback — public, OSF) ──────────────────────────────
+# VSGUI10K (documented fallback — public, OSF)
 
 def _fetch_zip(url: str, dest: Path) -> Path:
     log.info(f"downloading {url} → {dest} (~295 MB)")
@@ -195,7 +169,7 @@ def prepare_vsgui10k(cfg: dict, zip_path: str | None
     return root, items, stats
 
 
-# ── Card + read-only lockdown ─────────────────────────────────────────────────
+# Card + read-only lockdown
 
 def write_card(cfg: dict, stats: dict, items: pd.DataFrame) -> None:
     card = Path(cfg["paths"]["card"])

@@ -20,20 +20,13 @@ filters:                   # hard dwell filters (already applied at label build)
 winsor:
   percentile: 0.95         # cap = this quantile of dwell_s_raw on TRAIN ONLY
 
-resolve:                   # screenshot download strategy (disk/time bounded)
-  # All ~182k screenshots ≈ 122 GB — infeasible. Instead: whole-TRAJECTORY
-  # sampling per split (seeded, PREFIX-STABLE: growing a budget only adds
-  # trajectories, cache always reused; resumable — rerun any time, it
-  # continues). Complete trajectories ⇒ no sampled task has missing screens,
-  # which the task-level evaluation needs. Budgets are in ROWS (≈ screens);
-  # median task ≈ 5 rows.
-  row_budgets:               # ~115k rows ≈ 100k unique screenshots ≈ 12 GB
+resolve:
+  # Whole-TRAJECTORY sampling per split (seeded, prefix-stable, resumable) —
+  # complete tasks only, so the task-level eval never sees missing screens.
+  row_budgets:             # ~115k rows ≈ 100k unique screenshots ≈ 12 GB
     train: 100000          # ≈ 15k complete tasks (SFT wants volume)
     val: 5000              # ≈ 770 (per-epoch eval loss + decode probe)
-    test: 10000            # ≈ 1550 (generous: task-level eval lives here)
-  # Downscale + re-encode at download time: stored images only need to be
-  # ≥ the training input bound (image.max_side 1024 in configs/vlm.yaml).
-  # ~670 KB PNG → ~150-250 KB JPEG ⇒ ~3× less disk. null = keep original.
-  store:
+    test: 10000            # ≈ 1550 (task-level eval lives here)
+  store:                   # JPEG re-encode at download ⇒ ~3× less disk
     max_side: 1280
     jpeg_quality: 85

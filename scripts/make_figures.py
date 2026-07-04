@@ -1,29 +1,10 @@
-"""
-make_figures.py
-===============
-The paper's figure set, regenerated from cached artifacts on any CPU machine.
+"""The paper's figure set, regenerated from cached artifacts on any CPU box.
 
     uv run python scripts/make_figures.py [--config configs/figures.yaml]
 
-Reads ONLY what earlier stages wrote (rows_final.parquet, eval_metrics.json,
-eval_predictions.parquet, baseline_lgbm.txt) — it never runs a model, never
-fetches anything, and never touches the read-only external set. Figures whose
-inputs are missing are SKIPPED and listed in the card, never silently
-dropped, so the script is safe to run at any pipeline stage.
-
-Figures → artifacts/figures/ (+ figures_card.md provenance card):
-  fig_dwell_distribution   per-split dwell histogram + train-p95 winsor cap
-  fig_head_to_head         per-screen MAE(log) + Spearman ρ, model × subset
-  fig_task_level           task-level (per-trajectory sums) MAE + ρ
-  fig_screen_scatter       predicted vs actual seconds, one panel per model
-  fig_task_scatter         same at task level (the KLM-successor plot)
-  fig_calibration          decile reliability curves, all models overlaid
-  fig_feature_importance   LightGBM gain (what the no-image bar relies on)
-
-One visual system across the paper: each model keeps one fixed color in
-every figure (color follows the entity), grids are hairlines, and axes carry
-seconds wherever seconds are interpretable.
-"""
+Reads ONLY what earlier stages wrote — never runs a model, never fetches,
+never touches the external set. Figures with missing inputs are SKIPPED and
+listed in figures_card.md. Each model keeps one fixed color everywhere."""
 
 from __future__ import annotations
 
@@ -51,7 +32,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── One visual system (fixed identities — color follows the entity) ──────────
+# One visual system (fixed identities — color follows the entity)
 
 INK = "#0b0b0b"  # primary text
 INK_2 = "#52514e"  # secondary text (axis labels)
@@ -108,7 +89,7 @@ def tidy(ax) -> None:
     ax.set_axisbelow(True)
 
 
-# ── Figure builders (each returns the written path) ──────────────────────────
+# Figure builders (each returns the written path)
 
 
 def fig_dwell_distribution(rows: pd.DataFrame, cfg: dict, dest: Path) -> Path:
@@ -392,7 +373,7 @@ def fig_feature_importance(booster_path: Path, cfg: dict, dest: Path) -> Path:
     return dest
 
 
-# ── Orchestration: build what has inputs, card what doesn't ──────────────────
+# Orchestration: build what has inputs, card what doesn't
 
 
 def main() -> None:

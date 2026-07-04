@@ -1,36 +1,13 @@
-"""
-analyze_aim.py
-==============
-Theory-grounding analysis (optional appendix): what does the model's "time
-sense" consist of, in terms of established computational models of
-perceptual load?
+"""Theory-grounding analysis (optional appendix): is the model's "time sense"
+reducible to classical visual-clutter metrics (AIM)?
 
     uv run python scripts/analyze_aim.py [--config configs/external.yaml]
 
-Runs strictly POST-HOC over the already-cached zero-shot predictions
-(artifacts/external_preds.parquet) plus the AIM visual-clutter metrics that
-ship with the external set. It never runs the model and never feeds anything
-back into training/tuning — so it is compatible with the evaluate-once rule:
-the single evaluation already happened; this only re-reads its outputs.
-(This script is on the allowlist of tests/test_external_guard.py because it
-must read data/external; nothing else may.)
-
-Three regressions per subset (in-domain primary first, then ALL):
-
-1. human_time ~ AIM metrics      — how much of measured human time is
-   explained by quantified clutter alone (anchor to the clutter literature).
-2. VLM prediction ~ AIM metrics  — how much of the model's estimate is
-   reducible to classical clutter.
-3. The interesting cell: does the VLM's RESIDUAL (the part clutter cannot
-   explain) still track human time? Reported as Spearman ρ with a seeded
-   bootstrap CI, both against raw human time and against the human residual
-   (partial correlation) — if it does, the model learned something beyond
-   established complexity models; if not, that is itself the finding.
-
-Targets are log1p(seconds) (project convention); AIM predictors are
-z-scored; OLS R² is in-sample and descriptive — stated as such in the card.
-Output: artifacts/aim_analysis.md.
-"""
+Strictly POST-HOC over the cached zero-shot predictions — never runs the
+model, never feeds training/tuning (allowlisted in test_external_guard).
+Regressions per subset: human~AIM, VLM~AIM, and whether the VLM's residual
+(what clutter can't explain) still tracks human time. Targets log1p(s), AIM
+z-scored, in-sample OLS R² stated as descriptive. → artifacts/aim_analysis.md"""
 from __future__ import annotations
 
 import argparse

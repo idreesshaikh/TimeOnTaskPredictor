@@ -1,34 +1,15 @@
-"""
-validate_external.py
-====================
-Zero-shot external validation (O3): run the FROZEN VLM checkpoint once over
-the read-only external set and report rank agreement (Spearman + bootstrap
-CI) against measured human times.
+"""Zero-shot external validation: run the FROZEN VLM once over the read-only
+external set, report rank agreement (Spearman + bootstrap CI) vs human times.
 
     uv run python scripts/validate_external.py [--config configs/external.yaml]
                                                [--predict-only | --report-only]
                                                [--allow-rerun]
 
-CLAUDE.md contract, enforced here:
-- The external set is evaluated EXACTLY ONCE, zero-shot. The predict stage
-  refuses to run if predictions already exist, and the report stage refuses
-  to overwrite an existing report, unless --allow-rerun is passed — in which
-  case the rerun is recorded prominently in the report itself.
-- Nothing computed here feeds back into training/tuning: no thresholds,
-  no feature choices, no winsor cap. Rank agreement only.
-
-Two stages (same pattern as scripts/evaluate.py):
-1. PREDICT (GPU): frozen adapters, batched greedy decode of every external
-   screenshot with the exact training prompt → artifacts/external_preds.parquet.
-2. REPORT (CPU): lenient parse (failure rate stated; unparseable items are
-   EXCLUDED from the correlation, never imputed — a constant would inject
-   fake rank information), Spearman + seeded bootstrap CI overall and per
-   category, scatter plot, artifacts/external_report.md.
-
-Baseline: the no-image LightGBM consumes axTree features, which do not exist
-for external screenshots (VSGUI10K ships images + gaze only) — reported as
-not applicable rather than silently skipped.
-"""
+Evaluate-ONCE contract, enforced: predict refuses to rerun and report refuses
+to overwrite unless --allow-rerun (recorded prominently in the report).
+Unparseable items are EXCLUDED from the correlation, never imputed — a
+constant would inject fake rank information. LightGBM is n/a here (no axTrees
+exist for external screenshots) and is reported as such."""
 from __future__ import annotations
 
 import argparse
@@ -63,7 +44,7 @@ def load_items(cfg: dict) -> pd.DataFrame:
         drop=True)
 
 
-# ── Stage 1: zero-shot decode (GPU, once) ─────────────────────────────────────
+# Stage 1: zero-shot decode (GPU, once)
 
 def run_predict(cfg: dict, vcfg: dict, items: pd.DataFrame) -> None:
     import torch
@@ -107,7 +88,7 @@ def run_predict(cfg: dict, vcfg: dict, items: pd.DataFrame) -> None:
     log.info(f"raw predictions → {dest}")
 
 
-# ── Stage 2: rank agreement + report ──────────────────────────────────────────
+# Stage 2: rank agreement + report
 
 def save_scatter(df: pd.DataFrame, headline: dict, headline_label: str,
                  dest: Path) -> None:

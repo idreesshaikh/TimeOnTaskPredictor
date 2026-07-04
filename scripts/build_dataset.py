@@ -1,25 +1,10 @@
-"""
-build_dataset.py
-================
-Dataset pipeline: raw WebChain trajectory JSON → training-ready rows.
-Stages are independent, idempotent, and each writes a stats card to
-artifacts/ (CLAUDE.md rule). Run them in order:
+"""Dataset pipeline: raw WebChain JSON → training-ready rows. Idempotent
+stages, each writing a card to artifacts/. Run in order:
 
-  # 1. Audit the raw data BEFORE trusting it → artifacts/raw_audit.md
-  python scripts/build_dataset.py <json_dir> --audit
-
-  # 2. Per-screen dwell labels (CLAUDE.md spec, no fetching)
-  #    → data/processed/rows.parquet + artifacts/rows_card.md
-  python scripts/build_dataset.py <json_dir> --labels
-
-  # 3. Resolve screenshots into a local cache (resumable)
-  #    → data/processed/rows_resolved.parquet + artifacts/image_resolution.md
-  python scripts/build_dataset.py --resolve-images [--resolve-limit N]
-
-  # 4. Domain-disjoint splits + winsorized target (configs/data.yaml)
-  #    → data/processed/rows_final.parquet + artifacts/splits.json
-  #      + artifacts/dataset_card.md
-  python scripts/build_dataset.py --splits
+  python scripts/build_dataset.py <json_dir> --audit     # raw_audit.md
+  python scripts/build_dataset.py <json_dir> --labels    # rows.parquet
+  python scripts/build_dataset.py --resolve-images       # screenshot cache
+  python scripts/build_dataset.py --splits               # rows_final.parquet
 """
 from __future__ import annotations
 
@@ -43,7 +28,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ── Stage 1: raw-data audit ───────────────────────────────────────────────────
+# Stage 1: raw-data audit
 
 def run_audit(json_dir: Path, out_path: Path) -> None:
     log.info(f"Auditing raw trajectories in {json_dir} ...")
@@ -53,7 +38,7 @@ def run_audit(json_dir: Path, out_path: Path) -> None:
     log.info(json.dumps(stats, indent=2))
 
 
-# ── Stage 2: dwell label rows (CLAUDE.md "Label definition") ──────────────────
+# Stage 2: dwell label rows (CLAUDE.md "Label definition")
 
 def run_labels(json_dir: Path, rows_out: Path,
                min_dwell: float, max_dwell: float) -> None:
@@ -94,7 +79,7 @@ def run_labels(json_dir: Path, rows_out: Path,
     log.info(f"nav {nav} / in-page {len(df) - nav} — card → {card}")
 
 
-# ── Stage 3: screenshot resolution ────────────────────────────────────────────
+# Stage 3: screenshot resolution
 
 def run_resolve_images(
     rows_in: Path,
@@ -260,7 +245,7 @@ def run_resolve_images(
     )
 
 
-# ── Stage 4: splits + winsorized target (CLAUDE.md §8–§9) ─────────────────────
+# Stage 4: splits + winsorized target (CLAUDE.md §8–§9)
 
 def run_splits(config_path: Path) -> None:
     """Domain-disjoint 70/15/15 splits (seed from config) + train-only winsor
@@ -315,7 +300,7 @@ def run_splits(config_path: Path) -> None:
     )
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 
 def main() -> None:
     ap = argparse.ArgumentParser(
