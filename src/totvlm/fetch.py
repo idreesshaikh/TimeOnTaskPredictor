@@ -1,11 +1,5 @@
-"""
-totvlm/fetch.py
-===============
-Shared HTTP fetch scaffolding for the two resumable caches (screenshots in
-images.py, axTree features in features.py): one retry policy, one client
-recipe, one bounded fan-out loop. Failures are the caller's business — a
-fetch_one that returns None marks the ref unresolved, never raises the run.
-"""
+"""Shared HTTP fetch scaffolding for the resumable caches (images.py,
+features.py): one retry policy, one client recipe, one bounded fan-out."""
 from __future__ import annotations
 
 import logging

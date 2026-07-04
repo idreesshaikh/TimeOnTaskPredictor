@@ -1,24 +1,9 @@
-"""
-totvlm/train.py
-===============
-QLoRA SFT of Qwen3-VL-4B-Instruct for per-screen dwell prediction — Path A:
-the model learns to EMIT the number as text (`dwell_seconds: X.X`).
+"""QLoRA SFT of Qwen3-VL for per-screen dwell (emit `dwell_seconds: X.X`),
+via Unsloth's official vision SFT recipe. Needs CUDA (`uv sync --extra vlm`).
 
-Scaffold = Unsloth's official Qwen3-VL vision SFT pipeline: FastVisionModel +
-TRL SFTTrainer + UnslothVisionDataCollator. The collator owns vision-token
-packing and the chat template — nothing is hand-rolled here.
+    uv run python -m totvlm.train --config configs/vlm.yaml [--dry-run]
 
-Run (needs a CUDA GPU — install extras first: `uv sync --extra vlm`):
-    uv run python -m totvlm.train --config configs/vlm.yaml
-
-Dry run (memory smoke test: SAME batch/grad-accum/pixels, 50 examples, few
-steps; confirms loss drops and outputs parse — ALWAYS run before a full run):
-    uv run python -m totvlm.train --config configs/vlm.yaml --dry-run
-
-Outputs: checkpoints → artifacts/vlm_ckpt/ (per epoch + final adapters),
-train/val loss + parse rate → wandb + stdout, stage card →
-artifacts/vlm_train_card.md. All knobs live in configs/vlm.yaml.
-"""
+ALWAYS --dry-run first: same batch/pixels, tiny data — the VRAM smoke test."""
 from __future__ import annotations
 
 # unsloth MUST be imported before transformers/trl/peft so its
@@ -40,6 +25,7 @@ import inspect
 import json
 import os
 import random
+import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,9 +50,7 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-# ── Version-tolerant TRL shims ────────────────────────────────────────────────
-# The installed unsloth pin decides the TRL version; two arg names moved
-# across TRL releases. Map them instead of pinning the whole stack.
+# Version-tolerant shims: two arg names moved across TRL releases.
 
 def _make_sft_config(**kwargs) -> SFTConfig:
     names = {f.name for f in dataclasses.fields(SFTConfig)}
@@ -83,14 +67,9 @@ def _make_trainer(model, processor, **kwargs) -> SFTTrainer:
     return SFTTrainer(model=model, **{key: processor}, **kwargs)
 
 
-# ── Per-epoch VAL decode hook ─────────────────────────────────────────────────
-
 class ValDecodeCallback(TrainerCallback):
-    """
-    After each evaluation pass: greedy-decode a seeded sample of val screens,
-    report parse-success rate + log/seconds metrics on the parsed subset,
-    and keep a couple of raw decodes for the run card.
-    """
+    """After each eval pass: greedy-decode a seeded val sample, report parse
+    rate + metrics on the parsed subset, keep raw decodes for the card."""
 
     def __init__(self, processor, examples, n_samples, max_new_tokens, seed):
         rng = random.Random(seed)
@@ -111,7 +90,7 @@ class ValDecodeCallback(TrainerCallback):
             out = model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
-                do_sample=False,            # greedy: parseability, not variety
+                do_sample=False,
             )
         new_tokens = out[:, inputs["input_ids"].shape[1]:]
         return self.processor.batch_decode(
@@ -167,8 +146,6 @@ class ValDecodeCallback(TrainerCallback):
                 wandb.log(log)
 
 
-# ── Data ──────────────────────────────────────────────────────────────────────
-
 def _load_split(df: pd.DataFrame, split: str, n_limit: int | None, seed: int):
     """Deterministic per-split frame: img_resolved rows only, stable order,
     optional seeded subsample (dry-run)."""
@@ -179,8 +156,6 @@ def _load_split(df: pd.DataFrame, split: str, n_limit: int | None, seed: int):
         part = part.sample(n=n_limit, random_state=seed)
     return part
 
-
-# ── Run card ──────────────────────────────────────────────────────────────────
 
 def _write_train_card(
     path: Path, *, cfg_path: str, cfg: dict, dry_run: bool,
@@ -279,8 +254,6 @@ def _write_train_card(
     path.write_text("\n".join(lines))
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/vlm.yaml")
@@ -300,9 +273,8 @@ def main() -> None:
     tcfg = dict(cfg["train"])
     ecfg = dict(cfg["eval"])
     n_train_limit = n_val_limit = max_steps = None
-    # Dry runs get their own sandbox: never pollute the real checkpoint dir
-    # (auto-resume below would otherwise pick up a 12-step dry checkpoint)
-    # and never overwrite the full run's card.
+    # Dry runs get their own sandbox — auto-resume must never pick up a
+    # 12-step dry checkpoint, and the full run's card must not be overwritten.
     out_dir = cfg["paths"]["output_dir"]
     card_path = Path(cfg["paths"]["train_card"])
     if args.dry_run:
@@ -315,11 +287,14 @@ def main() -> None:
         out_dir += "-dryrun"
         card_path = card_path.with_name(
             card_path.stem + "-dryrun" + card_path.suffix)
+        # A dry run is a fresh smoke test: wipe the sandbox, or auto-resume
+        # picks up its own finished checkpoint-12 → 0 steps trained, stale
+        # losses from log_history, no eval pass → parse rate 0% → false FAIL.
+        shutil.rmtree(out_dir, ignore_errors=True)
 
-    # ── Data: rows_final → chat examples (train/val, img_resolved only) ──────
     df = pd.read_parquet(cfg["paths"]["rows_final"])
-    # dwell_s is already winsorized at the train-split p95; its train max IS
-    # the cap (logged in the dataset card). Recover it for the target clip.
+    # dwell_s is already winsorized at the train-split p95 — its train max
+    # IS the cap; recover it for the target clip
     winsor_cap = float(df.loc[df["split"] == "train", "dwell_s"].max())
 
     img = cfg["image"]
@@ -340,12 +315,10 @@ def main() -> None:
         sys.exit("No resolved-image rows in train/val — run the image "
                  "resolution stage of build_dataset.py first.")
 
-    # ── Model ─────────────────────────────────────────────────────────────────
     print("2/4  Loading 4-bit Qwen3-VL + LoRA ...", flush=True)
     model, processor = load_vlm(cfg)
     FastVisionModel.for_training(model)
 
-    # ── Trainer (official Unsloth vision SFT recipe) ──────────────────────────
     print("3/4  Building trainer ...", flush=True)
     if tcfg["report_to"] == "wandb":
         os.environ.setdefault("WANDB_PROJECT", tcfg["wandb_project"])
@@ -371,7 +344,7 @@ def main() -> None:
         fp16=False,
         report_to=tcfg["report_to"],
         run_name=tcfg["run_name"] + ("-dryrun" if args.dry_run else ""),
-        # Required for vision finetuning with UnslothVisionDataCollator:
+        # required for vision finetuning with UnslothVisionDataCollator:
         remove_unused_columns=False,
         dataset_text_field="",
         dataset_kwargs={"skip_prepare_dataset": True},
@@ -392,8 +365,7 @@ def main() -> None:
         callbacks=[decode_cb],
     )
 
-    # ── Train (auto-resume: a resubmitted/timed-out job continues from the
-    # last epoch checkpoint instead of restarting) ────────────────────────────
+    # auto-resume: a resubmitted job continues from the last epoch checkpoint
     last_ckpt = get_last_checkpoint(out_dir) if Path(out_dir).is_dir() else None
     print(f"4/4  {'Resuming from ' + last_ckpt if last_ckpt else 'Training'}"
           " ...", flush=True)
@@ -408,7 +380,6 @@ def main() -> None:
         "peak_reserved_gb": round(torch.cuda.max_memory_reserved() / 2**30, 2),
     }
 
-    # ── Save final adapters + card ────────────────────────────────────────────
     final_dir = Path(out_dir) / "final"
     model.save_pretrained(str(final_dir))
     processor.save_pretrained(str(final_dir))
@@ -430,7 +401,6 @@ def main() -> None:
     )
     print(f"\nAdapters → {final_dir} · card → {card_path}")
 
-    # ── Dry-run acceptance summary ────────────────────────────────────────────
     if args.dry_run and train_losses:
         first, last = train_losses[0]["loss"], train_losses[-1]["loss"]
         rate = decode_cb.history[-1]["parse_rate"] if decode_cb.history else 0.0

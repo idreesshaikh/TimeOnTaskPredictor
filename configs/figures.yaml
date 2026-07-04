@@ -1,12 +1,8 @@
-# Paper figure factory (scripts/make_figures.py).
-# SPEC.md rule: ALL tunable numbers live here, never in code.
-# Figures are regenerable on any CPU machine from cached artifacts — the
-# script never runs a model and never touches the read-only external set
-# (guarded by tests/test_external_guard.py).
+# Paper figure factory (scripts/make_figures.py) — CPU-only, regenerable
+# from cached artifacts.
 seed: 42
 
-# task_min_steps / primary_model are read from the eval config so the
-# figures can never disagree with the tables in eval_report.md.
+# read so figures can never disagree with the tables in eval_report.md
 eval_config: configs/eval.yaml
 
 paths:

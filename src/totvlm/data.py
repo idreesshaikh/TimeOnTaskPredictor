@@ -1,16 +1,6 @@
-"""
-totvlm/data.py
-==============
-Data layer for Time-on-Task prediction. Three things live here:
-
-1. Typed, tolerant views over the raw WebChain trajectory JSON
-   (`Step`, `Trajectory`, `iter_raw_trajectories`) + the raw-data audit.
-2. The Path-A SFT chat-example builder for the VLM
-   (`build_vlm_examples`): screenshot → messages whose assistant turn is
-   exactly `dwell_seconds: X.X` (winsorized dwell, 1 decimal).
-3. The matching output parser (`parse_dwell_output`) used by the val
-   decode hook and at evaluation time.
-"""
+"""Data layer: typed tolerant views over raw WebChain JSON + the raw audit,
+the SFT chat-example builder (assistant turn = `dwell_seconds: X.X`), and the
+matching output parsers."""
 from __future__ import annotations
 
 import json
@@ -26,10 +16,8 @@ from PIL import Image
 
 from totvlm.images import load_image
 
-# ── Raw trajectory schema ─────────────────────────────────────────────────────
-# Typed, tolerant views over the raw WebChain JSON. Every field is optional —
-# the raw data is inconsistent (launchApp steps have no createdTime, images are
-# sometimes URLs and sometimes opaque hashes, axTree may be null, ...).
+# Every field is optional — the raw data is inconsistent (launchApp steps
+# have no createdTime, img is a URL or an opaque hash, axTree may be null).
 
 def _as_int(v) -> int | None:
     try:
@@ -144,11 +132,8 @@ def _iter_json_objects(path: Path) -> Iterator[dict]:
 
 
 def iter_raw_trajectories(path: str | Path) -> Iterator[Trajectory]:
-    """
-    Stream typed trajectories from `path`: either a single JSON/JSONL file or a
-    directory containing many of them (searched recursively, sorted for
-    deterministic order). Objects without any steps are skipped.
-    """
+    """Stream typed trajectories from a JSON/JSONL file or a directory of
+    them (recursive, sorted for determinism). Step-less objects are skipped."""
     path = Path(path)
     files = (
         sorted(path.glob("**/*.json")) + sorted(path.glob("**/*.jsonl"))
@@ -160,17 +145,12 @@ def iter_raw_trajectories(path: str | Path) -> Iterator[Trajectory]:
                 yield Trajectory.from_dict(obj)
 
 
-# ── Raw-data audit ────────────────────────────────────────────────────────────
-
 def _pct(n: int, total: int) -> float:
     return round(100.0 * n / total, 2) if total else 0.0
 
 
 def audit_raw(trajectories: Iterable[Trajectory]) -> dict:
-    """
-    Compute descriptive stats over raw trajectories BEFORE trusting the data.
-    Returns a JSON-serializable dict (see write_raw_audit for the markdown).
-    """
+    """Descriptive stats over raw trajectories BEFORE trusting the data."""
     n_traj = 0
     n_steps = 0
     type_counts: Counter[str] = Counter()
@@ -274,9 +254,8 @@ def write_raw_audit(stats: dict, out_path: str | Path) -> None:
               json.dumps(stats, indent=2), "```", ""]
     out_path.write_text("\n".join(lines))
 
-# ── Path-A SFT chat examples (VLM emits `dwell_seconds: X.X`) ─────────────────
-# Prompt text is part of the label SPEC (SPEC.md), not a tunable knob — it
-# stays here. Everything numeric (pixel bounds, flags) comes from configs/*.yaml.
+# The prompt text is part of the label SPEC, not a tunable knob — it stays
+# here; everything numeric comes from configs/*.yaml.
 
 SYSTEM_PROMPT = (
     "You estimate how many seconds a user spends on this screen before their "
@@ -300,9 +279,7 @@ def parse_dwell_output(text: str | None) -> float | None:
     return float(m.group(1)) if m else None
 
 
-# Lenient tiers for EVALUATION decoding (training hooks stay strict):
-# a real prediction buried in sloppy formatting should count as a prediction,
-# not silently become an imputed median.
+# Lenient tiers for EVALUATION decoding (training hooks stay strict).
 _DWELL_LABELED_RE = re.compile(
     r"dwell[_\s]?seconds?\s*[:=]?\s*(-?[0-9]+(?:\.[0-9]+)?)", re.IGNORECASE
 )
@@ -312,17 +289,10 @@ PARSE_TIERS = ("strict", "labeled", "bare_number", "fail")
 
 
 def parse_dwell_output_lenient(text: str | None) -> tuple[float | None, str]:
-    """
-    Robust eval-time parser. Returns (seconds | None, tier):
-
-      strict      — exactly the trained format (`dwell_seconds: X.X`)
-      labeled     — a `dwell_seconds`-labeled number anywhere in the text
-      bare_number — no label; first number in the text
-      fail        — nothing usable (incl. negative values: dwell is never < 0)
-
-    Tier counts are reported by the eval entrypoint — failures are imputed
-    (train median) and NEVER hidden.
-    """
+    """Eval-time parser → (seconds | None, tier): strict = trained format,
+    labeled = dwell_seconds-labeled number anywhere, bare_number = first
+    number, fail = nothing usable (negatives fail). Tier counts are always
+    reported; failures are imputed downstream, never hidden."""
     v = parse_dwell_output(text)
     if v is not None:
         return v, "strict"
@@ -363,20 +333,10 @@ def build_vlm_examples(
     max_pixels: int,
     include_task_title: bool = False,
 ) -> list[dict]:
-    """
-    Rows → list of {"messages": [...], "dwell_s": float, "is_navigation": bool}.
-
-    - Only rows with a locally resolved screenshot are used (img_resolved).
-    - Images are loaded eagerly as downscaled PIL (bounded visual tokens).
-    - Built with a LIST COMPREHENSION, not datasets.map(): keeping PIL images
-      in plain Python dicts avoids Arrow image-type conversion issues.
-    - DEFAULT is screen-only (no task title) — the research question is how
-      much dwell is recoverable from the screen alone. include_task_title=True
-      is the ablation.
-
+    """img_resolved rows → chat examples with eagerly loaded, downscaled PIL
+    images (plain dicts, not datasets.map — avoids Arrow image conversion).
     The extra keys (dwell_s, is_navigation) are ignored by the collator and
-    used by the val decode hook / evaluation.
-    """
+    used by the val decode hook / evaluation."""
     rows = df[df["img_resolved"] & df["img_path"].notna()]
     return [
         {
@@ -406,13 +366,9 @@ def build_inference_examples(
     max_pixels: int,
     task_title: str | None = None,
 ) -> list[dict]:
-    """
-    Prompt-only chat examples (no gold turn) for arbitrary screenshots —
-    e.g. zero-shot external validation or scripts/predict.py. Same system
-    prompt and user-turn format as training, so the model sees exactly the
-    format it was tuned on. `task_title` (applied to every image) matches
-    the screen+task condition; None matches screen-only.
-    """
+    """Prompt-only chat examples for arbitrary screenshots (external
+    validation, predict.py) — exactly the trained prompt format. `task_title`
+    (applied to every image) matches the screen+task condition."""
     return [
         {
             "messages": _vlm_messages(

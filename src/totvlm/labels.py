@@ -1,31 +1,8 @@
-"""
-totvlm/labels.py
-================
-Per-screen dwell-time label construction — implements EXACTLY the
-"Label definition (the load-bearing spec)" in SPEC.md:
-
-1. Within each trajectory, process steps in file order.
-2. Drop all launchApp rows (no createdTime; not a perceived screen).
-3. MERGE consecutive actionable steps sharing an identical `img` string AND the
-   same tabId into one "screen unit". Unit createdTime = LAST step's; its
-   screenshot = FIRST step's img; href/axTree = FIRST step's.
-4. A unit's predecessor is the previous unit IN THE SAME tabId. The first unit
-   in a tab is dropped as a target (its createdTime still anchors later units;
-   cross-tab pairs never form a dwell).
-5. dwell_ms = unit.createdTime − predecessor.createdTime; dwell_s = dwell_ms/1000.
-6. is_navigation = (unit.href != predecessor.href).
-7. Hard filters: keep 0.05 < dwell_s <= 600 (configurable).
-
-No winsorization here — that happens later, train-split-only (SPEC.md §8).
-
-Documented tolerances for messy raw data (not in the spec, flagged not hidden):
-- Steps are only merge-eligible when `img` is a non-empty string; consecutive
-  steps that BOTH lack an img never merge.
-- A unit whose steps all lack createdTime cannot anchor either side of a dwell;
-  it is removed from its tab's chain (counted, never silently).
-- `action_type`/`host`/viewport come from the unit's FIRST step, matching the
-  spec's "screenshot/href/axTree = first step's" convention.
-"""
+"""Per-screen dwell labels — implements EXACTLY the label spec in SPEC.md.
+Tolerances for messy raw data: steps merge only on a non-empty `img`; units
+with no createdTime are removed from their tab's chain (counted); all unit
+metadata comes from the FIRST merged step. Winsorization happens later,
+train-split-only (splits.py)."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -36,11 +13,11 @@ import tldextract
 
 from totvlm.data import Step, Trajectory
 
-# Hard filters (SPEC.md §7) — overridable via build_rows kwargs / CLI.
+# hard filters (SPEC.md §7) — overridable via build_rows kwargs / CLI
 MIN_DWELL_S = 0.05
 MAX_DWELL_S = 600.0
 
-# Offline extractor: bundled public-suffix snapshot, no network at import/call.
+# bundled public-suffix snapshot: no network at import/call
 _extract = tldextract.TLDExtract(suffix_list_urls=())
 
 ROW_COLUMNS = [
@@ -100,8 +77,7 @@ def merge_screen_units(steps: list[Step]) -> list[ScreenUnit]:
     units = []
     for i, g in enumerate(groups):
         first = g[0]
-        # Tolerance: last step should have createdTime; if not, use the last
-        # step in the group that does (None if none do — handled by caller).
+        # last step with a createdTime (None if none — handled by caller)
         created = next(
             (s.created_time for s in reversed(g) if s.created_time is not None),
             None,
@@ -138,11 +114,11 @@ def rows_for_trajectory(
     prev_in_tab: dict[int | None, ScreenUnit] = {}
     for unit in units:
         if unit.created_time is None:
-            continue   # cannot anchor a dwell on either side (documented above)
+            continue   # cannot anchor a dwell on either side
         prev = prev_in_tab.get(unit.tab_id)
         prev_in_tab[unit.tab_id] = unit
         if prev is None:
-            continue   # first unit in this tab: predecessor only, not a target
+            continue   # first unit in tab: predecessor only, not a target
 
         dwell_s = (unit.created_time - prev.created_time) / 1000.0
         if not (min_dwell_s < dwell_s <= max_dwell_s):
