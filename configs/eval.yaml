@@ -31,6 +31,13 @@ vlm_models:
     adapters: artifacts/vlm_task_ckpt/final
     preds: artifacts/vlm_task_test_preds.parquet
     include_task_title: true
+  # Optional ablation — is fine-tuning even necessary? Same backbone, no
+  # training, same prompt+task title. Uncomment to add the row (costs one
+  # extra decode pass over TEST in the GPU job):
+  # - name: "VLM (zero-shot)"
+  #   adapters: unsloth/Qwen3-VL-4B-Instruct
+  #   preds: artifacts/vlm_zeroshot_test_preds.parquet
+  #   include_task_title: true
 
 predict:                    # GPU stage
   batch_size: 8
