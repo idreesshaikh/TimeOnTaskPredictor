@@ -15,7 +15,7 @@ prompt flag. Their gap = the goal-driven share of dwell.
 - Splits are by REGISTRABLE DOMAIN (eTLD+1 via `tldextract`). A domain appears in exactly
   one of {train, val, test}. Never split by trajectory or step. Save assignments to
   `artifacts/splits.json` and reuse them everywhere.
-- The external validation set (TaskSense or its documented fallback) is READ-ONLY and is
+- The external validation set (VSGUI10K) is READ-ONLY and is
   evaluated exactly once, zero-shot. It is NEVER used to pick features, hyperparameters,
   thresholds, or the winsorization cap. Keep it under `data/external/` and never reference
   that path from any training/tuning code.

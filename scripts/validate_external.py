@@ -183,10 +183,8 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
             "",
             "⚠️ **Measure caveat**: VSGUI10K (Putkonen et al. 2025, "
             "osf.io/hmg9b) measures visual **search** time — one component "
-            "of Time-on-Task, not the full per-screen dwell. TaskSense "
-            "(first choice) has no public data (see "
-            "`artifacts/external_card.md`). Rank agreement here is a weaker "
-            "but fully independent check.",
+            "of Time-on-Task, not the full per-screen dwell. Rank agreement "
+            "here is a weaker but fully independent check.",
         ]
     lines += [
         "",
