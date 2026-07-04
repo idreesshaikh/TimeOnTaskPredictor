@@ -38,7 +38,7 @@ def run_audit(json_dir: Path, out_path: Path) -> None:
     log.info(json.dumps(stats, indent=2))
 
 
-# Stage 2: dwell label rows (CLAUDE.md "Label definition")
+# Stage 2: dwell label rows (SPEC.md "Label definition")
 
 def run_labels(json_dir: Path, rows_out: Path,
                min_dwell: float, max_dwell: float) -> None:
@@ -245,7 +245,7 @@ def run_resolve_images(
     )
 
 
-# Stage 4: splits + winsorized target (CLAUDE.md §8–§9)
+# Stage 4: splits + winsorized target (SPEC.md §8–§9)
 
 def run_splits(config_path: Path) -> None:
     """Domain-disjoint 70/15/15 splits (seed from config) + train-only winsor

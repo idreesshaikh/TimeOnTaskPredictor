@@ -1,4 +1,4 @@
-# Dataset construction knobs (CLAUDE.md: all tunable numbers live here).
+# Dataset construction knobs (SPEC.md: all tunable numbers live here).
 seed: 42
 
 paths:

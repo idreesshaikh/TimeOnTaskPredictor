@@ -168,7 +168,7 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
         "",
         "**This read-only set was evaluated exactly once, zero-shot, with "
         "the frozen checkpoint.** Nothing here feeds back into training or "
-        "tuning (CLAUDE.md; path access enforced by "
+        "tuning (SPEC.md; path access enforced by "
         "`tests/test_external_guard.py`).",
     ]
     if rerun:
@@ -183,10 +183,8 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
             "",
             "⚠️ **Measure caveat**: VSGUI10K (Putkonen et al. 2025, "
             "osf.io/hmg9b) measures visual **search** time — one component "
-            "of Time-on-Task, not the full per-screen dwell. TaskSense "
-            "(first choice) has no public data (see "
-            "`artifacts/external_card.md`). Rank agreement here is a weaker "
-            "but fully independent check.",
+            "of Time-on-Task, not the full per-screen dwell. Rank agreement "
+            "here is a weaker but fully independent check.",
         ]
     lines += [
         "",
@@ -268,7 +266,7 @@ def main() -> None:
         if preds_path.exists() and not args.allow_rerun:
             sys.exit(
                 f"{preds_path} already exists — the external set is "
-                f"evaluated exactly ONCE (CLAUDE.md). Use --report-only to "
+                f"evaluated exactly ONCE (SPEC.md). Use --report-only to "
                 f"re-render the report, or --allow-rerun to override (the "
                 f"override is recorded in the report).")
         if not preds_path.exists() or args.allow_rerun:

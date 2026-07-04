@@ -1,12 +1,10 @@
-# External zero-shot validation (READ-ONLY set — CLAUDE.md rules).
+# External zero-shot validation (READ-ONLY set — SPEC.md rules).
 # This config is the ONLY yaml allowed to reference data/external
 # (enforced by tests/test_external_guard.py).
 seed: 42
 
 vlm_config: configs/vlm.yaml   # prompt/image knobs must match training
 
-# tasksense (first choice, never released — see artifacts/external_card.md)
-# or vsgui10k (documented fallback)
 source: vsgui10k
 
 paths:
@@ -16,10 +14,6 @@ paths:
   preds: artifacts/external_preds.parquet
   report: artifacts/external_report.md
   scatter_png: artifacts/external_scatter.png
-
-tasksense:
-  # manual transcription target if the data ever becomes available:
-  csv: data/external/tasksense/tasksense.csv   # [item_id, screenshot_path, human_time_s]
 
 vsgui10k:
   zip_url: https://osf.io/download/wbxdr/      # OSF project hmg9b

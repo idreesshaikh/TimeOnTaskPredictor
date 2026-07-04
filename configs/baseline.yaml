@@ -1,4 +1,4 @@
-# No-image LightGBM baseline (CLAUDE.md: all tunable numbers live here).
+# No-image LightGBM baseline (SPEC.md: all tunable numbers live here).
 seed: 42
 
 paths:

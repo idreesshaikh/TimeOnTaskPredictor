@@ -1,7 +1,7 @@
 """
 totvlm/config.py
 ================
-Tiny YAML config loader — CLAUDE.md rule: all tunable numbers live in
+Tiny YAML config loader — SPEC.md rule: all tunable numbers live in
 configs/*.yaml, never hard-coded. Every entrypoint takes a --config path
 and reads knobs through this.
 """

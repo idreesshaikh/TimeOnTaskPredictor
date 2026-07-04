@@ -1,11 +1,11 @@
 """
-CLAUDE.md read-only guard: the external validation set must NEVER be
+SPEC.md read-only guard: the external validation set must NEVER be
 referenced from training/tuning code. Only the dedicated external-validation
 entrypoints (scripts/prepare_external.py, scripts/validate_external.py) and
 their config (configs/external.yaml) may mention the data/external path.
 
 This test fails the moment anyone wires data/external into a model, feature,
-split, label, training, or evaluation module — the leak CLAUDE.md forbids.
+split, label, training, or evaluation module — the leak SPEC.md forbids.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_no_totvlm_module_touches_external():
     assert not offenders, (
         f"src/totvlm modules reference {FORBIDDEN!r}: "
         f"{[str(p) for p in offenders]} — the external set is READ-ONLY and "
-        f"must never feed training/tuning (CLAUDE.md)."
+        f"must never feed training/tuning (SPEC.md)."
     )
 
 

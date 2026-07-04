@@ -1,4 +1,4 @@
-"""Per-screen dwell labels — implements EXACTLY the label spec in CLAUDE.md.
+"""Per-screen dwell labels — implements EXACTLY the label spec in SPEC.md.
 Tolerances for messy raw data: steps merge only on a non-empty `img`; units
 with no createdTime are removed from their tab's chain (counted); all unit
 metadata comes from the FIRST merged step. Winsorization happens later,
@@ -13,7 +13,7 @@ import tldextract
 
 from totvlm.data import Step, Trajectory
 
-# hard filters (CLAUDE.md §7) — overridable via build_rows kwargs / CLI
+# hard filters (SPEC.md §7) — overridable via build_rows kwargs / CLI
 MIN_DWELL_S = 0.05
 MAX_DWELL_S = 600.0
 

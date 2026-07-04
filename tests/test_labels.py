@@ -1,5 +1,5 @@
 """
-Oracle tests for per-screen dwell-time label construction (CLAUDE.md
+Oracle tests for per-screen dwell-time label construction (SPEC.md
 "Verified test oracles"). Fixtures under tests/fixtures/ are the two oracle
 trajectories extracted verbatim from raw WebChain JSON (bulky `html` fields
 stripped; all timing/img/tab fields untouched).
@@ -13,7 +13,7 @@ from totvlm.labels import merge_screen_units, rows_for_trajectory
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-# (dwell_s, is_navigation) per CLAUDE.md, ±0.01 s
+# (dwell_s, is_navigation) per SPEC.md, ±0.01 s
 ORACLE_1 = [(54.046, False), (33.460, True), (73.887, True)]
 ORACLE_2 = [
     (6.683, True), (5.716, True), (0.830, False),

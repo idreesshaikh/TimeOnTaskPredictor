@@ -2,14 +2,13 @@
 
 _Generated 2026-07-03T05:36:31+00:00 · config `configs/external.yaml` · seed 42_
 
-## Source decision
+## Source
 
-- **First choice — TaskSense (arXiv 2511.09309)**: NOT available. As of 2026-07-03 the paper releases no dataset, code, screenshots, or per-item human times (checked the arXiv listing and web search); the paper's tables contain only fitted difficulty constants without the underlying screenshots, so no screenshot→time transcription is possible.
-- **Used: documented fallback VSGUI10K** (Putkonen et al. 2025, https://osf.io/hmg9b, public). ⚠️ It measures visual SEARCH time — one component of Time-on-Task — so rank agreement against it is a weaker but fully independent check.
+- **VSGUI10K** (Putkonen et al. 2025, https://osf.io/hmg9b, public). ⚠️ It measures visual SEARCH time — one component of Time-on-Task — so rank agreement against it is a weaker but fully independent check.
 - **In-domain primary = `web`** (pre-registered in configs/external.yaml): the training corpus (WebChain) is web-only, so the web category is the fair comparison; desktop/mobile screens are kept and reported as out-of-domain transfer, never as the headline.
 - `aim_metrics.csv`: per-screen Aalto Interface Metrics (visual clutter models), shipped with VSGUI10K — consumed post-hoc by the theory-grounding analysis (`scripts/analyze_aim.py`), never by training/tuning.
 
-## Contract (CLAUDE.md)
+## Contract (SPEC.md)
 
 - Lives under `data/external/` and is chmod'd **read-only**.
 - Evaluated **exactly once, zero-shot** by `scripts/validate_external.py`.

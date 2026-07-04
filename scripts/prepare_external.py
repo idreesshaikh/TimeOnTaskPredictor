@@ -8,9 +8,7 @@ tests/test_external_guard.py).
 Source = VSGUI10K (Putkonen et al. 2025, osf.io/hmg9b): per-screen
 human_time_s = median visual-search time over target-present trials.
 CAVEAT (stated in every report): search time is one COMPONENT of
-Time-on-Task — a weaker but fully independent rank check. (First choice
-TaskSense was never released — checked 2026-07-03; if that changes, drop a
-[item_id, screenshot_path, human_time_s] csv and run with source: tasksense.)
+Time-on-Task — a weaker but fully independent rank check.
 Outputs (chmod'd read-only): items.csv, images/, aim_metrics.csv."""
 from __future__ import annotations
 
@@ -41,29 +39,7 @@ ITEM_COLUMNS = ["item_id", "screenshot_path", "human_time_s", "n_trials",
                 "category"]
 
 
-# TaskSense (first choice — manual transcription, if it ever exists)
-
-def prepare_tasksense(cfg: dict) -> tuple[Path, pd.DataFrame, dict]:
-    csv = Path(cfg["tasksense"]["csv"])
-    if not csv.exists():
-        sys.exit(
-            f"source=tasksense but {csv} does not exist.\n"
-            "TaskSense (arXiv 2511.09309) has no public data release as of "
-            "2026-07-03 — there are no screenshots or per-item human times "
-            "to transcribe. Use the documented fallback instead:\n"
-            "    set `source: vsgui10k` in configs/external.yaml"
-        )
-    df = pd.read_csv(csv)
-    missing = {"item_id", "screenshot_path", "human_time_s"} - set(df.columns)
-    if missing:
-        sys.exit(f"{csv} is missing columns: {sorted(missing)}")
-    df["n_trials"] = df.get("n_trials", 1)
-    df["category"] = df.get("category", "gui")
-    stats = {"source": "tasksense", "n_items": len(df)}
-    return csv.parent, df[ITEM_COLUMNS], stats
-
-
-# VSGUI10K (documented fallback — public, OSF)
+# VSGUI10K (public, OSF)
 
 def _fetch_zip(url: str, dest: Path) -> Path:
     log.info(f"downloading {url} → {dest} (~295 MB)")
@@ -174,28 +150,18 @@ def prepare_vsgui10k(cfg: dict, zip_path: str | None
 def write_card(cfg: dict, stats: dict, items: pd.DataFrame) -> None:
     card = Path(cfg["paths"]["card"])
     card.parent.mkdir(parents=True, exist_ok=True)
-    src = stats["source"]
     lines = [
         "# External validation set card (READ-ONLY)",
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')} · "
         f"config `configs/external.yaml` · seed {cfg['seed']}_",
         "",
-        "## Source decision",
+        "## Source",
         "",
-        "- **First choice — TaskSense (arXiv 2511.09309)**: NOT available. "
-        "As of 2026-07-03 the paper releases no dataset, code, screenshots, "
-        "or per-item human times (checked the arXiv listing and web search); "
-        "the paper's tables contain only fitted difficulty constants without "
-        "the underlying screenshots, so no screenshot→time transcription is "
-        "possible.",
-        "- **Used: " + (
-            "TaskSense transcription** (`data/external/tasksense/`)."
-            if src == "tasksense" else
-            "documented fallback VSGUI10K** (Putkonen et al. 2025, "
-            "https://osf.io/hmg9b, public). ⚠️ It measures visual SEARCH "
-            "time — one component of Time-on-Task — so rank agreement "
-            "against it is a weaker but fully independent check."),
+        "- **VSGUI10K** (Putkonen et al. 2025, https://osf.io/hmg9b, "
+        "public). ⚠️ It measures visual SEARCH time — one component of "
+        "Time-on-Task — so rank agreement against it is a weaker but fully "
+        "independent check.",
         "- **In-domain primary = `web`** (pre-registered in "
         "configs/external.yaml): the training corpus (WebChain) is web-only, "
         "so the web category is the fair comparison; desktop/mobile screens "
@@ -206,7 +172,7 @@ def write_card(cfg: dict, stats: dict, items: pd.DataFrame) -> None:
         "theory-grounding analysis (`scripts/analyze_aim.py`), never by "
         "training/tuning.",
         "",
-        "## Contract (CLAUDE.md)",
+        "## Contract (SPEC.md)",
         "",
         "- Lives under `data/external/` and is chmod'd **read-only**.",
         "- Evaluated **exactly once, zero-shot** by "
@@ -268,12 +234,10 @@ def main() -> None:
     if args.force:
         make_writable(root)
 
-    if source == "tasksense":
-        root, items, stats = prepare_tasksense(cfg)
-    elif source == "vsgui10k":
+    if source == "vsgui10k":
         root, items, stats = prepare_vsgui10k(cfg, args.zip)
     else:
-        sys.exit(f"unknown source {source!r} (tasksense | vsgui10k)")
+        sys.exit(f"unknown source {source!r} (expected vsgui10k)")
 
     if items.empty:
         sys.exit("external set came out empty — refusing to write")

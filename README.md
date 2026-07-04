@@ -23,7 +23,7 @@ corpus, with a zero-shot external validation at the end:
 configs/          every tunable number (data / baseline / vlm / eval / external)
 src/totvlm/
   data.py         raw-JSON schema + audit · VLM chat examples · output parsers
-  labels.py       per-screen dwell labels (the load-bearing spec in CLAUDE.md)
+  labels.py       per-screen dwell labels (the load-bearing spec in SPEC.md)
   images.py       screenshot resolution/cache + model-ready loader
   splits.py       domain-disjoint splits · train-only winsor cap · dataset card
   features.py     AX-tree features for the baseline (feature-only cache)
@@ -109,7 +109,7 @@ Training stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
 `qwen3vl4b-qlora-pathA`, `qwen3vl4b-qlora-pathA-task`. Evaluation and figures
 write only to `artifacts/` (rerunnable offline).
 
-## Reproducibility contract (see CLAUDE.md for the full spec)
+## Reproducibility contract (see SPEC.md for the full spec)
 
 - Global seed **42** everywhere; splits saved to `artifacts/splits.json` and
   reused, never recomputed.

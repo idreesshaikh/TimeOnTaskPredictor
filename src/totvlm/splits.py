@@ -1,4 +1,4 @@
-"""Domain-disjoint train/val/test splits (CLAUDE.md rule): unit = registrable
+"""Domain-disjoint train/val/test splits (SPEC.md rule): unit = registrable
 domain (eTLD+1), 70/15/15 by domain count, seeded shuffle. Assignments are
 saved to artifacts/splits.json and REUSED, never recomputed. Rows with a
 missing/unassigned domain get split=None and are excluded everywhere."""
@@ -145,7 +145,7 @@ def sample_trajectory_rows(
 
 
 # The winsor cap is a TRAIN-split statistic — computing it anywhere else
-# leaks val/test into the target definition (CLAUDE.md §8–§9).
+# leaks val/test into the target definition (SPEC.md §8–§9).
 
 def train_winsor_cap(
     df: pd.DataFrame,

@@ -13,7 +13,7 @@ model:
   load_in_4bit: true                # QLoRA
   gradient_checkpointing: true      # Unsloth offloaded checkpointing
   max_seq_length: 1536              # ~768 visual tokens + prompt + task title
-  finetune_vision_layers: false     # CLAUDE.md: vision frozen
+  finetune_vision_layers: false     # SPEC.md: vision frozen
   lora_r: 16
   lora_alpha: 16
   lora_dropout: 0.0
