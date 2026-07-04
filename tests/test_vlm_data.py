@@ -5,10 +5,13 @@ pipeline that must be correct BEFORE burning GPU time.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pandas as pd
 import pytest
 from PIL import Image
 
+import totvlm.data
 from totvlm.data import (
     SYSTEM_PROMPT,
     build_vlm_examples,
@@ -62,7 +65,27 @@ BUILD_KW = dict(winsor_cap=CAP, max_side=1024, min_pixels=100352,
 def test_builder_uses_resolved_rows_only(rows):
     examples = build_vlm_examples(rows, **BUILD_KW)
     assert len(examples) == 2      # unresolved row dropped
-    assert isinstance(examples, list)   # plain list, never datasets.map
+    # sequence-like plain Python (never datasets.map), lazy not a list
+    assert isinstance(examples, Sequence)
+
+
+def test_builder_is_lazy(rows, monkeypatch):
+    """Images must load on ACCESS, not at build time — eagerly decoding the
+    full train split (~90k screenshots) OOM-kills the training job."""
+    calls = []
+    real = totvlm.data.load_image
+
+    def counting(*a, **kw):
+        calls.append(a)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(totvlm.data, "load_image", counting)
+    examples = build_vlm_examples(rows, **BUILD_KW)
+    assert calls == []                     # nothing decoded at build time
+    _ = examples[0]
+    assert len(calls) == 1                 # one image per accessed example
+    chunk = examples[0:2]                  # slice access (predict_dwell_batch)
+    assert len(chunk) == 2 and len(calls) == 3
 
 
 def test_builder_message_structure(rows):

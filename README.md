@@ -56,9 +56,7 @@ bash scripts/download_minimal.sh
 # 1. Dataset: audit → labels → screenshots → splits + winsorized target
 uv run python scripts/build_dataset.py <json_dir> --audit
 uv run python scripts/build_dataset.py <json_dir> --labels
-uv run python scripts/build_dataset.py --resolve-images   # trajectory-budgeted:
-#   whole tasks per split (configs/data.yaml resolve:), seeded prefix-stable,
-#   resumable, JPEG-recompressed (~1 GB, not the full ~122 GB corpus)
+uv run python scripts/build_dataset.py --resolve-images
 uv run python scripts/build_dataset.py --splits
 
 # 2. No-image baseline (LightGBM; fetches AX-tree features, resumable cache)
