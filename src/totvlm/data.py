@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -324,6 +324,48 @@ def _vlm_messages(
     ]
 
 
+class VlmExamples(Sequence):
+    """Lazy, list-like chat examples: build time captures only lightweight
+    records; the screenshot is loaded + downscaled when an example is
+    ACCESSED (per batch / per decode). Eager PIL loading works for a 50-row
+    dry run but the full train split is ~90k screenshots × ~1.8 MB decoded
+    ≈ 150 GB RAM — the job gets OOM-killed inside "Building chat examples".
+    Supports int and slice indexing (predict_dwell_batch slices chunks)."""
+
+    def __init__(self, records: list[dict], *, max_side: int,
+                 min_pixels: int, max_pixels: int, include_task_title: bool):
+        self._records = records
+        self._max_side = max_side
+        self._min_pixels = min_pixels
+        self._max_pixels = max_pixels
+        self._include_task_title = include_task_title
+
+    def __len__(self) -> int:
+        return len(self._records)
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return [self._build(r) for r in self._records[i]]
+        return self._build(self._records[i])
+
+    def _build(self, r: dict) -> dict:
+        return {
+            "messages": _vlm_messages(
+                load_image(
+                    r["img_path"],
+                    max_side=self._max_side,
+                    min_pixels=self._min_pixels,
+                    max_pixels=self._max_pixels,
+                ),
+                r["task_title"],
+                r["target_text"],
+                self._include_task_title,
+            ),
+            "dwell_s": r["dwell_s"],
+            "is_navigation": r["is_navigation"],
+        }
+
+
 def build_vlm_examples(
     df: pd.DataFrame,
     *,
@@ -332,30 +374,29 @@ def build_vlm_examples(
     min_pixels: int,
     max_pixels: int,
     include_task_title: bool = False,
-) -> list[dict]:
-    """img_resolved rows → chat examples with eagerly loaded, downscaled PIL
-    images (plain dicts, not datasets.map — avoids Arrow image conversion).
-    The extra keys (dwell_s, is_navigation) are ignored by the collator and
-    used by the val decode hook / evaluation."""
+) -> VlmExamples:
+    """img_resolved rows → lazy chat examples (VlmExamples: images load on
+    access, never all at once; plain dicts, not datasets.map — avoids Arrow
+    image conversion). The extra keys (dwell_s, is_navigation) are ignored
+    by the collator and used by the val decode hook / evaluation."""
     rows = df[df["img_resolved"] & df["img_path"].notna()]
-    return [
+    records = [
         {
-            "messages": _vlm_messages(
-                load_image(
-                    r.img_path,
-                    max_side=max_side,
-                    min_pixels=min_pixels,
-                    max_pixels=max_pixels,
-                ),
-                getattr(r, "task_title", None),
-                format_dwell_target(float(r.dwell_s), winsor_cap),
-                include_task_title,
-            ),
+            "img_path": r.img_path,
+            "task_title": getattr(r, "task_title", None),
+            "target_text": format_dwell_target(float(r.dwell_s), winsor_cap),
             "dwell_s": float(r.dwell_s),
             "is_navigation": bool(r.is_navigation),
         }
         for r in rows.itertuples(index=False)
     ]
+    return VlmExamples(
+        records,
+        max_side=max_side,
+        min_pixels=min_pixels,
+        max_pixels=max_pixels,
+        include_task_title=include_task_title,
+    )
 
 
 def build_inference_examples(
