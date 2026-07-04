@@ -103,8 +103,9 @@ auto-resumes from the last epoch checkpoint) — **if a job hits its time
 limit, just resubmit it** and it continues where it stopped. `train.sbatch`
 fails fast with a clear message if the setup outputs are missing.
 
-All stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
-`qwen3vl4b-qlora-pathA`, `qwen3vl4b-qlora-pathA-task`, `eval-test`.
+Training stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
+`qwen3vl4b-qlora-pathA`, `qwen3vl4b-qlora-pathA-task`. Evaluation and figures
+write only to `artifacts/` (rerunnable offline).
 
 ## Reproducibility contract (see CLAUDE.md for the full spec)
 
