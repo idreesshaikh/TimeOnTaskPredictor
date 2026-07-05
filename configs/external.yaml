@@ -8,22 +8,15 @@ vlm_config: configs/vlm.yaml   # prompt/image knobs must match training
 source: vsgui10k
 
 paths:
-  adapters: artifacts/vlm_ckpt/final   # the FROZEN checkpoint
+  # The FROZEN image+features model (screenshot in, features distilled at
+  # train time). Its privileged features were train-time only, so this
+  # images-only external set stays a valid zero-shot probe.
+  adapters: artifacts/vlm_ckpt/final
   external_root: data/external
   card: artifacts/external_card.md
   preds: artifacts/external_preds.parquet
   report: artifacts/external_report.md
   scatter_png: artifacts/external_scatter.png
-
-# `validate_external.py --condition lupi` swaps in these paths: the frozen
-# LUPI screen-only model gets ITS one zero-shot pass (privileged features
-# were train-time only, so the images-only set remains a valid probe). Same
-# evaluate-once guards, separate artifacts — the original run is untouched.
-lupi_paths:
-  adapters: artifacts/vlm_lupi_ckpt/final
-  preds: artifacts/external_lupi_preds.parquet
-  report: artifacts/external_lupi_report.md
-  scatter_png: artifacts/external_lupi_scatter.png
 
 vsgui10k:
   zip_url: https://osf.io/download/wbxdr/      # OSF project hmg9b

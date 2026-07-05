@@ -6,16 +6,24 @@ per-screen predictions within a trajectory, how long the whole task takes.
 Research question (v2): how accurately can per-screen — and, by aggregation,
 whole-task — Time-on-Task be predicted from rendered UI screens, and how much of
 that predictability resides in the screen alone versus the user's stated task?
-Two trained conditions: screen-only (configs/vlm.yaml — the science core) and
-screen+task-title (configs/vlm_task.yaml — the predictor); identical except the
-prompt flag. Their gap = the goal-driven share of dwell.
-LUPI extension (v2.1): each condition also has a LUPI twin
-(configs/vlm_lupi.yaml, configs/vlm_task_lupi.yaml) — identical prompt and
-inference, but TRAIN targets are λ-blended toward an out-of-fold LightGBM
-teacher that saw the privileged features (axTree stats, nav flag, step index,
-click area). Generalized distillation: privileged info exists at train time
-only; the gap to the plain condition = what that metadata is worth to a
-pixels-only predictor.
+Two trained conditions, and NEITHER is a pixels-only model:
+- image+features (configs/vlm.yaml — the science core)
+- image+features+task-title (configs/vlm_task.yaml — the predictor)
+Both read only the screenshot (+ task title for the second) at INFERENCE, but
+their TRAIN targets are λ-blended toward an out-of-fold LightGBM teacher that
+saw the privileged features (axTree stats, nav flag, step index, click area) —
+features the screenshot itself can't show. Generalized distillation / learning
+under privileged information: the metadata shapes what the model learns but
+never appears at inference, so the deployed predictor stays screenshot-only
+while not being handicapped relative to the metadata-rich LightGBM baseline.
+The two conditions are identical except the task-title prompt flag, so their
+gap = the goal-driven share of dwell. They are compared against the no-image
+LightGBM baseline and the predict-the-median floors.
+All privileged-info logic (the teacher's out-of-fold predictions and the λ
+target blend) lives in `totvlm/lupi.py`. configs/vlm.yaml is the base (it
+carries the `lupi:` block); configs/vlm_task.yaml is a thin `base: vlm.yaml`
+overlay that only adds the task title, so the "identical except one flag" claim
+holds in the files themselves.
 
 ## Non-negotiable rules
 - Reproducibility: global seed = 42 (Python, NumPy, torch, split assignment). Python 3.12.
@@ -26,7 +34,9 @@ pixels-only predictor.
   evaluated exactly once, zero-shot. It is NEVER used to pick features, hyperparameters,
   thresholds, or the winsorization cap. Keep it under `data/external/` and never reference
   that path from any training/tuning code.
-- All tunable numbers live in `configs/*.yaml`. No magic numbers in code.
+- All tunable numbers live in `configs/*.yaml`. No magic numbers in code. A
+  config may `base:` another and override only what differs (deep-merged) —
+  shared knobs are declared once, in the base.
 - Every stage writes a small JSON/markdown "card" of stats to `artifacts/`.
 
 ## Label definition (the load-bearing spec)
@@ -65,12 +75,13 @@ Row construction:
 2. `scripts/train_baseline.py` → no-image LightGBM baseline + baseline_report.md
 2b. `scripts/make_lupi_teacher.py` → lupi_teacher_preds.parquet +
    lupi_teacher_card.md (OOF LightGBM on privileged features, folds grouped
-   by registrable domain — feeds the `lupi:` block of the LUPI configs)
-3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml |
-   configs/vlm_lupi.yaml | configs/vlm_task_lupi.yaml`
-   → QLoRA adapters per condition + train cards (GPU; run all four)
-4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM < VLM screen <
-   VLM screen+task, + both LUPI twins), per-screen AND task-level
+   by registrable domain — feeds the `lupi:` block that BOTH trained
+   conditions use)
+3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
+   → QLoRA adapters + train cards for the two conditions (GPU; each blends the
+   privileged-feature teacher into its train targets)
+4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM <
+   VLM image+features < VLM image+features+task), per-screen AND task-level
    (per-trajectory sums) + eval_report.md + eval_metrics.json +
    eval_predictions.parquet
 5. `scripts/make_figures.py` → the paper figure set (artifacts/figures/),

@@ -255,44 +255,9 @@ def write_raw_audit(stats: dict, out_path: str | Path) -> None:
     out_path.write_text("\n".join(lines))
 
 # One screen unit is identified by this triple everywhere (evaluate.py,
-# LUPI teacher preds, prediction caches).
+# LUPI teacher preds, prediction caches). The LUPI target blend lives in
+# totvlm.lupi (it consumes this key).
 ROW_KEY = ["trajectory_id", "tab_id", "unit_index"]
-
-
-def blend_lupi_targets(
-    df: pd.DataFrame, teacher: pd.DataFrame, lam: float
-) -> tuple[pd.DataFrame, dict]:
-    """LUPI via generalized distillation (Lopez-Paz et al. 2016): TRAIN
-    targets become a λ-mix of the privileged-feature teacher's out-of-fold
-    prediction and the true label, mixed in the model's log1p target space.
-    The privileged features (axTree stats, nav flag, step index, click area)
-    only ever reach the model through this soft target — inference stays
-    screenshot-only. Rows the teacher does not cover keep the true label.
-    Call this on the TRAIN split only; val/test targets are never blended."""
-    if not 0.0 <= lam <= 1.0:
-        raise ValueError(f"lupi lambda must be in [0, 1], got {lam}")
-    merged = df.merge(
-        teacher[ROW_KEY + ["teacher_pred_log"]],
-        on=ROW_KEY, how="left", validate="1:1",
-    )
-    covered = merged["teacher_pred_log"].notna()
-    blended_log = (
-        (1.0 - lam) * np.log1p(merged["dwell_s"])
-        + lam * merged["teacher_pred_log"]
-    )
-    merged["target_s"] = np.where(
-        covered, np.expm1(blended_log), merged["dwell_s"]
-    )
-    shift = (merged.loc[covered, "target_s"]
-             - merged.loc[covered, "dwell_s"]).abs()
-    stats = {
-        "lambda": lam,
-        "n_rows": int(len(merged)),
-        "n_blended": int(covered.sum()),
-        "coverage": round(float(covered.mean()), 4) if len(merged) else 0.0,
-        "mean_abs_shift_s": round(float(shift.mean()), 3) if len(shift) else 0.0,
-    }
-    return merged, stats
 
 
 # The prompt text is part of the label SPEC, not a tunable knob — it stays
@@ -421,8 +386,8 @@ def build_vlm_examples(
     image conversion). The extra keys (dwell_s, is_navigation) are ignored
     by the collator and used by the val decode hook / evaluation."""
     rows = df[df["img_resolved"] & df["img_path"].notna()]
-    # LUPI: blend_lupi_targets adds `target_s` (the soft training target);
-    # `dwell_s` stays the true label for the decode hook / evaluation.
+    # LUPI: totvlm.lupi.blend_lupi_targets adds `target_s` (the soft training
+    # target); `dwell_s` stays the true label for the decode hook / evaluation.
     blended = "target_s" in rows.columns
     records = [
         {

@@ -38,11 +38,8 @@ from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTConfig, SFTTrainer
 
 from totvlm.config import load_config
-from totvlm.data import (
-    blend_lupi_targets,
-    build_vlm_examples,
-    parse_dwell_output,
-)
+from totvlm.data import build_vlm_examples, parse_dwell_output
+from totvlm.lupi import blend_lupi_targets
 from totvlm.model import load_vlm
 from totvlm.scoring import regression_metrics
 
@@ -184,10 +181,10 @@ def _write_train_card(
         f"- Target: `dwell_seconds: X.X` (winsor cap {winsor_cap:.3f} s,"
         f" train-split p95 — see artifacts/dataset_card.md)",
         f"- Task title in prompt: **{cfg['data']['include_task_title']}**"
-        f" (False = screen-only, the primary RQ)",
+        f" (False = image+features, True = image+features+task)",
         *([
-            f"- LUPI: train targets blended toward the privileged-feature"
-            f" teacher (λ={lupi_stats['lambda']}) —"
+            f"- Features (train-time only): targets blended toward the"
+            f" privileged-feature teacher (λ={lupi_stats['lambda']}) —"
             f" **{lupi_stats['n_blended']}/{lupi_stats['n_rows']}**"
             f" rows covered ({lupi_stats['coverage']:.1%}), mean |shift|"
             f" {lupi_stats['mean_abs_shift_s']} s; val targets untouched,"

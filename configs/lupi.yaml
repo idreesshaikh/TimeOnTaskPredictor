@@ -1,8 +1,9 @@
 # LUPI teacher stage (scripts/make_lupi_teacher.py): out-of-fold LightGBM
 # predictions from the PRIVILEGED features (axTree stats, nav flag, step
 # index, click area) over the VLM's TRAIN rows. These become the soft half of
-# the training target in configs/vlm_lupi.yaml / vlm_task_lupi.yaml; the
-# blend weight λ lives in those configs. Val/test are never touched here.
+# the training target in BOTH trained conditions (configs/vlm.yaml and its
+# +task overlay); the blend weight λ lives in those configs. Val/test are
+# never touched here.
 seed: 42
 
 # LightGBM params + axTree fetch knobs come from the baseline config so the

@@ -1,28 +1,19 @@
 """
-LUPI correctness, CPU-only: the λ-blend of true labels and teacher
-predictions (totvlm.data.blend_lupi_targets), the blended target reaching
-the SFT example text, and the teacher's domain-grouped fold assignment
-(scripts/make_lupi_teacher.py) — the pieces that must be right BEFORE
-burning GPU time on the LUPI conditions.
+LUPI correctness, CPU-only (all of totvlm.lupi): the λ-blend of true labels
+and teacher predictions (blend_lupi_targets), the blended target reaching the
+SFT example text, and the teacher's domain-grouped fold assignment
+(assign_domain_folds) — the pieces that must be right BEFORE burning GPU time
+on the LUPI conditions.
 """
 from __future__ import annotations
-
-import importlib.util
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
 
-from totvlm.data import ROW_KEY, blend_lupi_targets, build_vlm_examples
-
-spec = importlib.util.spec_from_file_location(
-    "make_lupi_teacher",
-    Path(__file__).resolve().parent.parent / "scripts" / "make_lupi_teacher.py",
-)
-make_lupi_teacher = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(make_lupi_teacher)
+from totvlm.data import ROW_KEY, build_vlm_examples
+from totvlm.lupi import assign_domain_folds, blend_lupi_targets
 
 CAP = 24.954
 
@@ -104,8 +95,8 @@ def test_target_text_uses_blend_dwell_stays_true(tmp_path):
 def test_folds_group_by_domain_and_are_deterministic():
     domains = pd.Series(["a.com", "b.com", "a.com", "c.com", "d.com",
                          "e.com", "b.com"])
-    f1 = make_lupi_teacher.assign_domain_folds(domains, k=3, seed=42)
-    f2 = make_lupi_teacher.assign_domain_folds(domains, k=3, seed=42)
+    f1 = assign_domain_folds(domains, k=3, seed=42)
+    f2 = assign_domain_folds(domains, k=3, seed=42)
     assert f1.tolist() == f2.tolist()                       # deterministic
     per_domain = pd.DataFrame({"d": domains, "f": f1}).groupby("d")["f"].nunique()
     assert (per_domain == 1).all()                          # domain-disjoint
