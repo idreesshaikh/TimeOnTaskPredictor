@@ -26,6 +26,18 @@ vlm_models:
     adapters: artifacts/vlm_task_ckpt/final
     preds: artifacts/vlm_task_test_preds.parquet
     include_task_title: true
+  # LUPI conditions: same prompts/inputs as the two above, but the TRAIN
+  # targets were blended toward the privileged-feature LightGBM teacher
+  # (configs/vlm_lupi.yaml / vlm_task_lupi.yaml). Gap to the plain condition
+  # = what train-time-only metadata (axTree, nav flag, ...) is worth.
+  - name: "VLM (screen, LUPI)"
+    adapters: artifacts/vlm_lupi_ckpt/final
+    preds: artifacts/vlm_lupi_test_preds.parquet
+    include_task_title: false
+  - name: "VLM (screen+task, LUPI)"
+    adapters: artifacts/vlm_task_lupi_ckpt/final
+    preds: artifacts/vlm_task_lupi_test_preds.parquet
+    include_task_title: true
   # Optional ablation — is fine-tuning even necessary? Same backbone, no
   # training, same prompt+task title. Uncomment to add the row (costs one
   # extra decode pass over TEST in the GPU job):

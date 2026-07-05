@@ -1,0 +1,20 @@
+# LUPI teacher stage (scripts/make_lupi_teacher.py): out-of-fold LightGBM
+# predictions from the PRIVILEGED features (axTree stats, nav flag, step
+# index, click area) over the VLM's TRAIN rows. These become the soft half of
+# the training target in configs/vlm_lupi.yaml / vlm_task_lupi.yaml; the
+# blend weight λ lives in those configs. Val/test are never touched here.
+seed: 42
+
+# LightGBM params + axTree fetch knobs come from the baseline config so the
+# teacher is the same model family as the published baseline.
+baseline_config: configs/baseline.yaml
+
+paths:
+  rows_final: data/processed/rows_final.parquet
+  teacher_preds: artifacts/lupi_teacher_preds.parquet
+  card: artifacts/lupi_teacher_card.md
+
+teacher:
+  k_folds: 5      # grouped by registrable domain; predict fold i, early-stop
+                  # on fold (i+1) % k, train on the rest — no row is ever
+                  # predicted by a model that saw its own domain

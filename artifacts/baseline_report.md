@@ -1,6 +1,6 @@
 # No-image LightGBM baseline report
 
-_Generated 2026-07-03 · config `configs/baseline.yaml` · seed 42 · best iteration 21_
+_Generated 2026-07-04 · config `configs/baseline.yaml` · seed 42 · best iteration 21_
 
 Target: `y = log1p(dwell_s)` (winsorized at the train-split p95 cap; see `artifacts/dataset_card.md`). Trained on TRAIN, early-stopped on VAL l1, evaluated ONCE on TEST. Splits are domain-disjoint (`artifacts/splits.json`).
 
@@ -76,7 +76,7 @@ ECE-style weighted gap: **1.56 s**
       "n": 3865,
       "mae_log": 0.5083765559390342,
       "rmse_log": 0.6417805444672414,
-      "mae_s": 3.71778881637634,
+      "mae_s": 3.7177888163763404,
       "rmse_s": 5.805399770401353,
       "spearman_rho": 0.4812652723441226,
       "mean_actual_s": 6.740109598965072,

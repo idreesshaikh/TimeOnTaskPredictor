@@ -345,6 +345,30 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
     )
 
 
+def lupi_increment_paragraph(plain: dict, lupi: dict, label: str) -> str:
+    """Did LUPI work? Same prompt and inputs, targets blended toward the
+    privileged-feature teacher at train time only (identical rows)."""
+    d_all = plain["overall"]["mae_log"] - lupi["overall"]["mae_log"]
+    d_in = plain["in_page"]["mae_log"] - lupi["in_page"]["mae_log"]
+    d_nav = plain["navigation"]["mae_log"] - lupi["navigation"]["mae_log"]
+    verdict = (
+        "the privileged features transferred — training-time-only metadata "
+        "(nav flag, axTree structure, step index) made the screenshot-only "
+        "predictor better without changing what it needs at inference."
+        if d_all > 0
+        else "the privileged features did not transfer here — blending "
+        "toward the teacher moved the targets but not the test error, "
+        "consistent with the key privileged bit (the nav flag) not being "
+        "inferable from a single screenshot."
+    )
+    return (
+        f"LUPI ({label}): distilling the privileged-feature teacher into "
+        f"the training targets changes MAE(log) by **{d_all:+.4f} overall** "
+        f"({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive = LUPI "
+        f"better). Read: {verdict}"
+    )
+
+
 def save_qualitative(
     rows: pd.DataFrame, n: int, banner_h: int, out_dir: Path, seed: int
 ) -> list[dict]:
@@ -505,6 +529,16 @@ def run_report(
                 head_metrics["VLM (screen)"], head_metrics["VLM (screen+task)"]
             )
         )
+    for plain, lupi, label in (
+        ("VLM (screen)", "VLM (screen, LUPI)", "screen"),
+        ("VLM (screen+task)", "VLM (screen+task, LUPI)", "screen+task"),
+    ):
+        if plain in head_metrics and lupi in head_metrics:
+            paragraphs.append(
+                lupi_increment_paragraph(
+                    head_metrics[plain], head_metrics[lupi], label
+                )
+            )
 
     # Machine-readable outputs: the metrics JSON and the per-row prediction
     # matrix (head-to-head rows, one pred_log:<model> column per contestant)
