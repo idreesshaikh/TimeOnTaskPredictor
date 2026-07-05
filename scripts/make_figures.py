@@ -45,7 +45,9 @@ MODEL_COLORS = {  # the paper's ladder, one color per model everywhere
     "train-median floor": "#898781",
     "LightGBM (no image)": "#1baf7a",
     "VLM (screen)": "#2a78d6",
+    "VLM (screen, LUPI)": "#7fabe3",       # lighter shade of its plain twin
     "VLM (screen+task)": "#4a3aa7",
+    "VLM (screen+task, LUPI)": "#9187cf",  # lighter shade of its plain twin
 }
 SPLIT_COLORS = {"train": "#2a78d6", "val": "#1baf7a", "test": "#eda100"}
 SUBSETS = ("overall", "navigation", "in_page")

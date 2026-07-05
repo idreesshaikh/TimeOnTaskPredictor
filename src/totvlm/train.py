@@ -38,7 +38,11 @@ from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTConfig, SFTTrainer
 
 from totvlm.config import load_config
-from totvlm.data import build_vlm_examples, parse_dwell_output
+from totvlm.data import (
+    blend_lupi_targets,
+    build_vlm_examples,
+    parse_dwell_output,
+)
 from totvlm.model import load_vlm
 from totvlm.scoring import regression_metrics
 
@@ -162,6 +166,7 @@ def _write_train_card(
     n_train: int, n_val: int, winsor_cap: float, tcfg: dict,
     train_losses: list[dict], eval_losses: list[dict],
     decode_history: list[dict], vram: dict, checkpoint_dir: str,
+    lupi_stats: dict | None = None,
 ) -> None:
     first = train_losses[0]["loss"] if train_losses else None
     last = train_losses[-1]["loss"] if train_losses else None
@@ -180,6 +185,14 @@ def _write_train_card(
         f" train-split p95 — see artifacts/dataset_card.md)",
         f"- Task title in prompt: **{cfg['data']['include_task_title']}**"
         f" (False = screen-only, the primary RQ)",
+        *([
+            f"- LUPI: train targets blended toward the privileged-feature"
+            f" teacher (λ={lupi_stats['lambda']}) —"
+            f" **{lupi_stats['n_blended']}/{lupi_stats['n_rows']}**"
+            f" rows covered ({lupi_stats['coverage']:.1%}), mean |shift|"
+            f" {lupi_stats['mean_abs_shift_s']} s; val targets untouched,"
+            f" inference stays screenshot-only"
+        ] if lupi_stats else []),
         f"- Examples: train **{n_train}** · val **{n_val}** (img_resolved only)",
         "",
         "## Memory footprint",
@@ -243,6 +256,7 @@ def _write_train_card(
                 "effective_config": {
                     "train": tcfg, "model": cfg["model"], "image": img,
                     "data": cfg["data"], "dry_run": dry_run,
+                    "lupi": lupi_stats,
                 },
             },
             indent=2, default=str,
@@ -307,7 +321,20 @@ def main() -> None:
         include_task_title=cfg["data"]["include_task_title"],
     )
     print("1/4  Building chat examples ...", flush=True)
-    train_ds = build(_load_split(df, "train", n_train_limit, seed))
+    train_part = _load_split(df, "train", n_train_limit, seed)
+    # LUPI condition: blend the TRAIN targets toward the privileged-feature
+    # teacher's out-of-fold prediction. Val targets are never blended.
+    lupi_stats = None
+    if "lupi" in cfg:
+        teacher = pd.read_parquet(cfg["lupi"]["teacher_preds"])
+        train_part, lupi_stats = blend_lupi_targets(
+            train_part, teacher, float(cfg["lupi"]["lambda"])
+        )
+        print(f"     LUPI: blended {lupi_stats['n_blended']}"
+              f"/{lupi_stats['n_rows']} train targets "
+              f"(λ={lupi_stats['lambda']}, mean |shift| "
+              f"{lupi_stats['mean_abs_shift_s']} s)", flush=True)
+    train_ds = build(train_part)
     val_ds = build(_load_split(df, "val", n_val_limit, seed))
     print(f"     train {len(train_ds)} · val {len(val_ds)} "
           f"(winsor cap {winsor_cap:.3f} s)", flush=True)
@@ -398,6 +425,7 @@ def main() -> None:
         n_train=len(train_ds), n_val=len(val_ds), winsor_cap=winsor_cap,
         tcfg=tcfg, train_losses=train_losses, eval_losses=eval_losses,
         decode_history=decode_cb.history, vram=vram, checkpoint_dir=out_dir,
+        lupi_stats=lupi_stats,
     )
     print(f"\nAdapters → {final_dir} · card → {card_path}")
 

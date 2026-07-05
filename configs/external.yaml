@@ -15,6 +15,16 @@ paths:
   report: artifacts/external_report.md
   scatter_png: artifacts/external_scatter.png
 
+# `validate_external.py --condition lupi` swaps in these paths: the frozen
+# LUPI screen-only model gets ITS one zero-shot pass (privileged features
+# were train-time only, so the images-only set remains a valid probe). Same
+# evaluate-once guards, separate artifacts — the original run is untouched.
+lupi_paths:
+  adapters: artifacts/vlm_lupi_ckpt/final
+  preds: artifacts/external_lupi_preds.parquet
+  report: artifacts/external_lupi_report.md
+  scatter_png: artifacts/external_lupi_scatter.png
+
 vsgui10k:
   zip_url: https://osf.io/download/wbxdr/      # OSF project hmg9b
   min_trials_per_screen: 3    # per-screen median needs a few observations

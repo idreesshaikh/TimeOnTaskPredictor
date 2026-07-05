@@ -9,6 +9,13 @@ that predictability resides in the screen alone versus the user's stated task?
 Two trained conditions: screen-only (configs/vlm.yaml — the science core) and
 screen+task-title (configs/vlm_task.yaml — the predictor); identical except the
 prompt flag. Their gap = the goal-driven share of dwell.
+LUPI extension (v2.1): each condition also has a LUPI twin
+(configs/vlm_lupi.yaml, configs/vlm_task_lupi.yaml) — identical prompt and
+inference, but TRAIN targets are λ-blended toward an out-of-fold LightGBM
+teacher that saw the privileged features (axTree stats, nav flag, step index,
+click area). Generalized distillation: privileged info exists at train time
+only; the gap to the plain condition = what that metadata is worth to a
+pixels-only predictor.
 
 ## Non-negotiable rules
 - Reproducibility: global seed = 42 (Python, NumPy, torch, split assignment). Python 3.12.
@@ -56,11 +63,16 @@ Row construction:
 1. `scripts/build_dataset.py --audit | --labels | --resolve-images | --splits`
    → rows_final.parquet, splits.json, dataset_card.md
 2. `scripts/train_baseline.py` → no-image LightGBM baseline + baseline_report.md
-3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
-   → QLoRA adapters per condition + train cards (GPU; run both conditions)
+2b. `scripts/make_lupi_teacher.py` → lupi_teacher_preds.parquet +
+   lupi_teacher_card.md (OOF LightGBM on privileged features, folds grouped
+   by registrable domain — feeds the `lupi:` block of the LUPI configs)
+3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml |
+   configs/vlm_lupi.yaml | configs/vlm_task_lupi.yaml`
+   → QLoRA adapters per condition + train cards (GPU; run all four)
 4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM < VLM screen <
-   VLM screen+task), per-screen AND task-level (per-trajectory sums) +
-   eval_report.md + eval_metrics.json + eval_predictions.parquet
+   VLM screen+task, + both LUPI twins), per-screen AND task-level
+   (per-trajectory sums) + eval_report.md + eval_metrics.json +
+   eval_predictions.parquet
 5. `scripts/make_figures.py` → the paper figure set (artifacts/figures/),
    CPU-only, rebuilt from cached artifacts — never runs a model
 6. `scripts/prepare_external.py` + `scripts/validate_external.py` +
