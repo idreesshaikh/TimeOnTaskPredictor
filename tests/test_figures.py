@@ -27,8 +27,8 @@ spec.loader.exec_module(mf)
 MODELS = [
     "train-median floor",
     "LightGBM (no image)",
-    "VLM (screen)",
-    "VLM (screen+task)",
+    "VLM (image+features)",
+    "VLM (image+features+task)",
 ]
 
 
@@ -99,7 +99,8 @@ def cfg(tmp_path):
 def test_learned_models_excludes_floors():
     names = mf._learned_models(_predictions())
     assert "train-median floor" not in names
-    assert names == ["LightGBM (no image)", "VLM (screen)", "VLM (screen+task)"]
+    assert names == ["LightGBM (no image)", "VLM (image+features)",
+                     "VLM (image+features+task)"]
 
 
 def test_prediction_figures_render(cfg, tmp_path):

@@ -1,11 +1,27 @@
 # Qwen3-VL QLoRA SFT — Path A: emit `dwell_seconds: X.X` as text.
 # SPEC.md rule: ALL tunable numbers live here, never in code.
+#
+# Condition 1 of 2 — IMAGE + FEATURES. The model sees only the screenshot at
+# inference, but at TRAIN time its targets are blended toward a LightGBM
+# teacher that saw the privileged trajectory features (axTree structure, nav
+# flag, step index, click area) — features the screenshot itself can't show.
+# That is the `lupi:` block below (learning under privileged information /
+# generalized distillation). So this is NOT a pixels-only model: the features
+# shape what it learns; they just never appear at inference.
+#
+# The only other trained condition, configs/vlm_task.yaml, is a thin overlay
+# that inherits everything here and adds the task title to the prompt.
 seed: 42
 
 paths:
   rows_final: data/processed/rows_final.parquet   # split + winsorized dwell_s
   output_dir: artifacts/vlm_ckpt                  # trainer checkpoints + final adapters
   train_card: artifacts/vlm_train_card.md         # stage card (stats, VRAM, parse rate)
+
+lupi:                               # privileged features → soft training target
+  teacher_preds: artifacts/lupi_teacher_preds.parquet  # scripts/make_lupi_teacher.py
+  lambda: 0.5                       # soft-target weight: 0 = plain SFT,
+                                    # 1 = pure teacher; blended in log1p space
 
 model:
   checkpoint: unsloth/Qwen3-VL-4B-Instruct
@@ -23,7 +39,7 @@ image:                              # bounds Qwen3-VL visual tokens (28 px grid)
   max_pixels: 602112                # 768 * 28^2  → ≤768 visual tokens
 
 data:
-  include_task_title: false         # RQ is screen-only; true = task-title ablation
+  include_task_title: false         # image only at inference; true = +task (vlm_task.yaml)
 
 train:
   learning_rate: 2.0e-4

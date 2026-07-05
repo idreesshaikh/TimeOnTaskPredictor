@@ -3,16 +3,13 @@
     uv run python scripts/make_lupi_teacher.py [--config configs/lupi.yaml]
                                                [--limit N]
 
-The teacher sees the PRIVILEGED features (axTree structural stats, the
-navigation flag, step index, click-target area) that exist only at training
-time; its predictions become the soft half of the LUPI training target
-(generalized distillation — the blend happens in totvlm.train via
-`lupi.lambda` in configs/vlm_lupi.yaml).
-
-Leak control: folds are grouped by REGISTRABLE DOMAIN (same philosophy as
-the frozen splits) — every train row is predicted by a booster that never
-saw its domain. Early stopping uses the next fold, never the predicted one.
-Only TRAIN rows are processed; val/test targets are never blended."""
+Thin driver: loads the VLM's train rows, fetches the PRIVILEGED features
+(axTree structural stats, nav flag, step index, click-target area — train-time
+only), and calls totvlm.lupi.oof_teacher_predictions to score them out of
+fold. Those predictions become the soft half of BOTH trained conditions'
+target; the blend happens in totvlm.train via `lupi.lambda` (configs/vlm.yaml).
+The leak discipline (domain-grouped folds, val/test never touched) lives in
+totvlm.lupi. Writes lupi_teacher_preds.parquet + the teacher card."""
 from __future__ import annotations
 
 import argparse
@@ -33,7 +30,7 @@ from totvlm.features import (
     feature_columns,
     fetch_axtree_features,
 )
-from totvlm.model import train_lgbm_baseline
+from totvlm.lupi import oof_teacher_predictions
 from totvlm.scoring import metrics_by_navigation
 
 logging.basicConfig(
@@ -43,67 +40,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-
-
-def assign_domain_folds(domains: pd.Series, k: int, seed: int) -> pd.Series:
-    """Deterministic k-fold assignment by registrable domain: seeded shuffle
-    of the unique domains, then round-robin. Every domain lands in exactly
-    one fold, so no booster is early-stopped or evaluated on its own
-    training domains."""
-    uniq = sorted(domains.dropna().unique())
-    random.Random(seed).shuffle(uniq)
-    fold_of = {d: i % k for i, d in enumerate(uniq)}
-    return domains.map(fold_of)
-
-
-def oof_teacher_predictions(
-    frame: pd.DataFrame,
-    cols: list[str],
-    *,
-    k: int,
-    seed: int,
-    lgbm_params: dict,
-    early_stopping_rounds: int,
-) -> tuple[pd.DataFrame, list[dict]]:
-    """Out-of-fold predictions: fold i is predicted by a booster trained on
-    the other folds minus fold (i+1)%k, which serves as the early-stopping
-    set. Returns (frame + teacher_pred_log + fold, per-fold stats)."""
-    frame = frame.copy()
-    frame["fold"] = assign_domain_folds(frame["registrable_domain"], k, seed)
-    frame["teacher_pred_log"] = np.nan
-    fold_stats = []
-    for i in range(k):
-        es = (i + 1) % k
-        tr_mask = ~frame["fold"].isin([i, es])
-        es_mask = frame["fold"] == es
-        pr_mask = frame["fold"] == i
-        if not tr_mask.any() or not es_mask.any() or not pr_mask.any():
-            raise SystemExit(
-                f"fold {i}: empty train/early-stop/predict part "
-                f"(rows: train {int(tr_mask.sum())}, es {int(es_mask.sum())}, "
-                f"predict {int(pr_mask.sum())}) — too few domains for "
-                f"k_folds={k}; lower it in configs/lupi.yaml"
-            )
-        booster = train_lgbm_baseline(
-            frame.loc[tr_mask, cols], frame.loc[tr_mask, "y"].to_numpy(),
-            frame.loc[es_mask, cols], frame.loc[es_mask, "y"].to_numpy(),
-            params=lgbm_params,
-            early_stopping_rounds=early_stopping_rounds,
-        )
-        frame.loc[pr_mask, "teacher_pred_log"] = booster.predict(
-            frame.loc[pr_mask, cols]
-        )
-        fold_stats.append({
-            "fold": i,
-            "n_train": int(tr_mask.sum()),
-            "n_early_stop": int(es_mask.sum()),
-            "n_predicted": int(pr_mask.sum()),
-            "best_iteration": booster.best_iteration
-            or lgbm_params["n_estimators"],
-        })
-        log.info(f"fold {i}: predicted {int(pr_mask.sum())} rows "
-                 f"(best iter {fold_stats[-1]['best_iteration']})")
-    return frame, fold_stats
 
 
 def main() -> None:
@@ -200,9 +136,9 @@ def main() -> None:
         "Privileged features (axTree stats, nav flag, step index, click "
         "area) exist at TRAIN time only. Each train row's prediction comes "
         "from a booster that never saw its registrable domain; these become "
-        "the soft half of the LUPI target (λ in configs/vlm_lupi.yaml). "
-        "Val/test targets are never blended; inference stays "
-        "screenshot-only.",
+        "the soft half of both trained conditions' target (λ in "
+        "configs/vlm.yaml). Val/test targets are never blended; inference "
+        "stays screenshot-only.",
         "",
         f"- Coverage: **{len(out)}** of {len(vlm_train)} VLM train rows "
         f"(**{coverage:.1%}**) — uncovered rows keep the true label",

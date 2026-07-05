@@ -117,8 +117,7 @@ def save_scatter(df: pd.DataFrame, headline: dict, headline_label: str,
     plt.close(fig)
 
 
-def run_report(cfg: dict, items: pd.DataFrame, rerun: bool,
-               condition: str) -> None:
+def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
     rcfg = cfg["report"]
     preds = pd.read_parquet(cfg["paths"]["preds"])
     df = items.merge(preds, on="item_id", how="left", validate="1:1")
@@ -165,24 +164,18 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool,
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')} · "
         f"config `configs/external.yaml` · seed {cfg['seed']} · "
-        f"source **{src}** · condition **{condition}** "
+        f"source **{src}** · model **image+features** "
         f"(`{cfg['paths']['adapters']}`)_",
         "",
         "**This read-only set was evaluated exactly once, zero-shot, with "
         "the frozen checkpoint.** Nothing here feeds back into training or "
         "tuning (SPEC.md; path access enforced by "
         "`tests/test_external_guard.py`).",
+        "",
+        "The image+features model reads only the screenshot at inference "
+        "(its privileged features were train-time only), so this images-only "
+        "external set is a valid zero-shot probe.",
     ]
-    if condition == "lupi":
-        lines += [
-            "",
-            "This is the LUPI screen-only model: its train targets were "
-            "blended toward a privileged-feature teacher, but inference is "
-            "identical to the plain screen condition — screenshot in, "
-            "seconds out — so this images-only set stays a valid probe. "
-            "One pass per frozen model; the plain model's report is "
-            "`artifacts/external_report.md`.",
-        ]
     if rerun:
         lines += [
             "",
@@ -264,16 +257,9 @@ def main() -> None:
     ap.add_argument("--allow-rerun", action="store_true",
                     help="override the evaluate-once guard (recorded in the "
                          "report)")
-    ap.add_argument("--condition", choices=("screen", "lupi"),
-                    default="screen",
-                    help="which frozen model gets its one zero-shot pass: "
-                         "the plain screen condition (default) or the LUPI "
-                         "condition (paths from `lupi_paths` in the config)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    if args.condition == "lupi":
-        cfg["paths"] = {**cfg["paths"], **cfg["lupi_paths"]}
     vcfg = load_config(cfg["vlm_config"])
     items = load_items(cfg)
     log.info(f"external items: {len(items)} (source {cfg['source']})")
@@ -299,7 +285,7 @@ def main() -> None:
     if report_path.exists() and not args.allow_rerun:
         sys.exit(f"{report_path} already exists — evaluate-once. Use "
                  f"--allow-rerun to regenerate (recorded in the report).")
-    run_report(cfg, items, rerun=args.allow_rerun, condition=args.condition)
+    run_report(cfg, items, rerun=args.allow_rerun)
 
 
 if __name__ == "__main__":

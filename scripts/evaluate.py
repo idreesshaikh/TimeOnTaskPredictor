@@ -287,23 +287,26 @@ def task_level_table(
 
 
 def edge_paragraph(vlm: dict, lgbm: dict) -> str:
-    """Where does the screen model's edge over LightGBM live — in-page
-    (cognitive signal) or navigation (page-load latency in the dwell)?"""
+    """Where does the VLM's edge over LightGBM live — in-page (cognitive
+    signal) or navigation (page-load latency in the dwell)? The VLM reads
+    only the screenshot at inference but was trained with the same privileged
+    features LightGBM uses, so this is a fair inference-time comparison: can a
+    screenshot-only predictor match a metadata-fed one?"""
     d_in = lgbm["in_page"]["mae_log"] - vlm["in_page"]["mae_log"]
     d_nav = lgbm["navigation"]["mae_log"] - vlm["navigation"]["mae_log"]
     n_in, n_nav = vlm["in_page"]["n"], vlm["navigation"]["n"]
 
     where = (
-        f"On identical rows, the screen model's MAE(log) edge over LightGBM "
-        f"is **{d_in:+.4f} on in-page steps** (n={n_in}) and "
+        f"On identical rows, the image+features VLM's MAE(log) edge over "
+        f"LightGBM is **{d_in:+.4f} on in-page steps** (n={n_in}) and "
         f"**{d_nav:+.4f} on navigation steps** (n={n_nav}); positive = VLM "
         f"better."
     )
     if d_in <= 0 and d_nav <= 0:
         verdict = (
             "The VLM does not beat the baseline on either subset, so there "
-            "is no edge to attribute — the screenshot alone recovers no more "
-            "than the interpretable structural features here."
+            "is no edge to attribute — reading the screenshot at inference "
+            "recovers no more than LightGBM's interpretable features here."
         )
     elif d_in > d_nav:
         verdict = (
@@ -324,48 +327,26 @@ def edge_paragraph(vlm: dict, lgbm: dict) -> str:
 
 
 def goal_increment_paragraph(screen: dict, task: dict) -> str:
-    """RQ v2's second clause: how much does knowing the user's task add on
-    top of the screen? (screen vs screen+task, identical rows)."""
+    """RQ v2's second clause: how much does knowing the user's task add on top
+    of the screen? Both conditions share the same screenshot input and the
+    same train-time features, so their gap isolates the task title alone —
+    identical rows."""
     d_all = screen["overall"]["mae_log"] - task["overall"]["mae_log"]
     d_in = screen["in_page"]["mae_log"] - task["in_page"]["mae_log"]
     d_nav = screen["navigation"]["mae_log"] - task["navigation"]["mae_log"]
     verdict = (
         "knowing the goal adds real predictive information on top of the "
-        "pixels — the goal-driven share of dwell is nonzero and now "
+        "screen — the goal-driven share of dwell is nonzero and now "
         "quantified."
         if d_all > 0
-        else "the task title adds little or nothing on top of the pixels here — "
-        "on this corpus, the predictable share of dwell is carried by the "
-        "screen itself."
+        else "the task title adds little or nothing on top of the screen here "
+        "— on this corpus, the predictable share of dwell is carried by the "
+        "screen (and its distilled features) itself."
     )
     return (
         f"Adding the task title changes MAE(log) by **{d_all:+.4f} overall** "
         f"({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive = "
-        f"screen+task better). Read: {verdict}"
-    )
-
-
-def lupi_increment_paragraph(plain: dict, lupi: dict, label: str) -> str:
-    """Did LUPI work? Same prompt and inputs, targets blended toward the
-    privileged-feature teacher at train time only (identical rows)."""
-    d_all = plain["overall"]["mae_log"] - lupi["overall"]["mae_log"]
-    d_in = plain["in_page"]["mae_log"] - lupi["in_page"]["mae_log"]
-    d_nav = plain["navigation"]["mae_log"] - lupi["navigation"]["mae_log"]
-    verdict = (
-        "the privileged features transferred — training-time-only metadata "
-        "(nav flag, axTree structure, step index) made the screenshot-only "
-        "predictor better without changing what it needs at inference."
-        if d_all > 0
-        else "the privileged features did not transfer here — blending "
-        "toward the teacher moved the targets but not the test error, "
-        "consistent with the key privileged bit (the nav flag) not being "
-        "inferable from a single screenshot."
-    )
-    return (
-        f"LUPI ({label}): distilling the privileged-feature teacher into "
-        f"the training targets changes MAE(log) by **{d_all:+.4f} overall** "
-        f"({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive = LUPI "
-        f"better). Read: {verdict}"
+        f"image+features+task better). Read: {verdict}"
     )
 
 
@@ -523,22 +504,14 @@ def run_report(
     paragraphs = [
         edge_paragraph(head_metrics[primary_name], head_metrics["LightGBM (no image)"])
     ]
-    if "VLM (screen)" in head_metrics and "VLM (screen+task)" in head_metrics:
+    if ("VLM (image+features)" in head_metrics
+            and "VLM (image+features+task)" in head_metrics):
         paragraphs.append(
             goal_increment_paragraph(
-                head_metrics["VLM (screen)"], head_metrics["VLM (screen+task)"]
+                head_metrics["VLM (image+features)"],
+                head_metrics["VLM (image+features+task)"],
             )
         )
-    for plain, lupi, label in (
-        ("VLM (screen)", "VLM (screen, LUPI)", "screen"),
-        ("VLM (screen+task)", "VLM (screen+task, LUPI)", "screen+task"),
-    ):
-        if plain in head_metrics and lupi in head_metrics:
-            paragraphs.append(
-                lupi_increment_paragraph(
-                    head_metrics[plain], head_metrics[lupi], label
-                )
-            )
 
     # Machine-readable outputs: the metrics JSON and the per-row prediction
     # matrix (head-to-head rows, one pred_log:<model> column per contestant)
