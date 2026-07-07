@@ -304,6 +304,11 @@ def main() -> None:
         # picks up its own finished checkpoint-12 → 0 steps trained, stale
         # losses from log_history, no eval pass → parse rate 0% → false FAIL.
         shutil.rmtree(out_dir, ignore_errors=True)
+    elif tcfg.get("max_train_rows"):
+        # Reduced-fidelity λ sweep: cap TRAIN rows (seeded subsample) for a fast
+        # comparison. VAL stays FULL, so the validation signal used to pick λ is
+        # unaffected. The final vlm.yaml run omits this knob → full train data.
+        n_train_limit = int(tcfg["max_train_rows"])
 
     df = pd.read_parquet(cfg["paths"]["rows_final"])
     # dwell_s is already winsorized at the train-split p95 — its train max
