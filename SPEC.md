@@ -63,9 +63,17 @@ Row construction:
 9. Model target = `log1p(dwell_s_winsorized)`. Report metrics in both log and seconds.
 
 ## Backbone / training
-- Model: Qwen3-VL-4B-Instruct via Unsloth `FastVisionModel`, 4-bit QLoRA, freeze vision
-  layers, LoRA on language attention+MLP, r=16, alpha=16.
+- Model: Qwen3-VL-4B-Instruct via Unsloth `FastVisionModel`, 4-bit QLoRA, LoRA on the
+  vision AND language attention+MLP layers, r=16, alpha=16, dropout=0.05. (v2: the vision
+  layers were frozen in the first run; LoRA-tuning them lets the screenshot itself inform
+  the estimate. BOTH conditions use the identical setup, so the two-condition gap stays a
+  clean measure of the task-title effect.)
 - Primary output = Path A: SFT the model to emit exactly `dwell_seconds: X.X` (1 decimal).
+- Model selection: evaluate + checkpoint several times per epoch and DEPLOY THE BEST
+  checkpoint by validation loss (`load_best_model_at_end`) — never the last epoch, which
+  overfits. The single distillation weight λ (configs/vlm.yaml `lupi.lambda`) is likewise
+  selected on VALIDATION only (grid in configs/sweeps/, chosen via scripts/select_lambda.py).
+  Neither selection ever touches TEST.
 - Training needs a CUDA GPU (`uv sync --extra vlm`). Always run
   `python -m totvlm.train --dry-run` (the memory smoke test) before a full run.
 
@@ -77,9 +85,13 @@ Row construction:
    lupi_teacher_card.md (OOF LightGBM on privileged features, folds grouped
    by registrable domain — feeds the `lupi:` block that BOTH trained
    conditions use)
+2c. λ selection (GPU, VAL only): train `configs/sweeps/lam*.yaml` (image+features
+   at a few λ) → `scripts/select_lambda.py` picks the lowest-VAL-error λ → copy it
+   into `configs/vlm.yaml`. TEST is never used to choose λ.
 3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
    → QLoRA adapters + train cards for the two conditions (GPU; each blends the
-   privileged-feature teacher into its train targets)
+   privileged-feature teacher into its train targets; deploys the best-by-val-loss
+   checkpoint)
 4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM <
    VLM image+features < VLM image+features+task), per-screen AND task-level
    (per-trajectory sums) + eval_report.md + eval_metrics.json +

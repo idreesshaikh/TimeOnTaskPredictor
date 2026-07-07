@@ -175,9 +175,11 @@ def _write_train_card(
         f" · config `{cfg_path}` · seed {cfg['seed']}"
         f" · mode **{'DRY-RUN (VRAM smoke test)' if dry_run else 'FULL'}**_",
         "",
-        f"- Model: `{cfg['model']['checkpoint']}` · 4-bit QLoRA · vision frozen"
+        f"- Model: `{cfg['model']['checkpoint']}` · 4-bit QLoRA · vision layers"
+        f" {'LoRA-tuned' if cfg['model']['finetune_vision_layers'] else 'frozen'}"
         f" · LoRA r={cfg['model']['lora_r']} α={cfg['model']['lora_alpha']}"
-        f" on language attn+MLP",
+        f" dropout {cfg['model']['lora_dropout']} on language attn+MLP"
+        f"{' + vision' if cfg['model']['finetune_vision_layers'] else ''}",
         f"- Target: `dwell_seconds: X.X` (winsor cap {winsor_cap:.3f} s,"
         f" train-split p95 — see artifacts/dataset_card.md)",
         f"- Task title in prompt: **{cfg['data']['include_task_title']}**"
@@ -346,6 +348,23 @@ def main() -> None:
     print("3/4  Building trainer ...", flush=True)
     if tcfg["report_to"] == "wandb":
         os.environ.setdefault("WANDB_PROJECT", tcfg["wandb_project"])
+    # Checkpoint cadence: a full run evaluates + saves `evals_per_epoch` times
+    # per epoch and keeps the best (lowest val loss) as the model we deploy —
+    # per-epoch-only saving let the overfit final epoch become `final/`. A dry
+    # run just evaluates once at the end (single checkpoint, nothing to select).
+    if max_steps:
+        sched_kwargs = {"eval_strategy": "epoch", "save_strategy": "epoch"}
+    else:
+        eff_batch = tcfg["batch_size"] * tcfg["grad_accum"]
+        steps_per_epoch = max(1, -(-len(train_ds) // eff_batch))  # ceil-div
+        eval_steps = max(1, steps_per_epoch // tcfg["evals_per_epoch"])
+        sched_kwargs = {
+            "eval_strategy": "steps", "eval_steps": eval_steps,
+            "save_strategy": "steps", "save_steps": eval_steps,
+            "load_best_model_at_end": True,
+            "metric_for_best_model": "eval_loss",
+            "greater_is_better": False,
+        }
     sft_args = _make_sft_config(
         output_dir=out_dir,
         seed=seed,
@@ -361,8 +380,7 @@ def main() -> None:
         max_grad_norm=tcfg["max_grad_norm"],
         optim=tcfg["optim"],
         logging_steps=tcfg["logging_steps"],
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        **sched_kwargs,
         save_total_limit=tcfg["save_total_limit"],
         bf16=True,
         fp16=False,

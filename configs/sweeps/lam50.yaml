@@ -1,0 +1,16 @@
+# λ sweep overlay — VAL SELECTION ONLY. One global distillation weight.
+# Train the grid, compare VAL decode MAE(log) with scripts/select_lambda.py,
+# then copy the winner into configs/vlm.yaml before the final two-condition run.
+# TEST is never touched. Image+features condition (task title inherited = false);
+# everything but λ inherits configs/vlm.yaml, so λ is the only thing that varies.
+base: ../vlm.yaml
+
+paths:
+  output_dir: artifacts/sweeps/vlm_lam50
+  train_card: artifacts/sweeps/vlm_lam50_card.md
+
+lupi:
+  lambda: 0.5
+
+train:
+  run_name: qwen3vl4b-sweep-lam50
