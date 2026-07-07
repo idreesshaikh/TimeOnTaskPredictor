@@ -72,7 +72,10 @@ Row construction:
 - Model selection: evaluate + checkpoint several times per epoch and DEPLOY THE BEST
   checkpoint by validation loss (`load_best_model_at_end`) — never the last epoch, which
   overfits. The single distillation weight λ (configs/vlm.yaml `lupi.lambda`) is likewise
-  selected on VALIDATION only (grid in configs/sweeps/, chosen via scripts/select_lambda.py).
+  selected on VALIDATION only (candidate grid in configs/sweeps/, searched
+  bracket-and-refine by scripts/run_sweep.py — coarse anchors, then only the
+  neighbours of the best λ until both are worse — and the winner recorded via
+  scripts/select_lambda.py).
   Neither selection ever touches TEST.
 - Training needs a CUDA GPU (`uv sync --extra vlm`). Always run
   `python -m totvlm.train --dry-run` (the memory smoke test) before a full run.
@@ -85,9 +88,11 @@ Row construction:
    lupi_teacher_card.md (OOF LightGBM on privileged features, folds grouped
    by registrable domain — feeds the `lupi:` block that BOTH trained
    conditions use)
-2c. λ selection (GPU, VAL only): train `configs/sweeps/lam*.yaml` (image+features
-   at a few λ) → `scripts/select_lambda.py` picks the lowest-VAL-error λ → copy it
-   into `configs/vlm.yaml`. TEST is never used to choose λ.
+2c. λ selection (GPU, VAL only): `scripts/run_sweep.py` bracket-and-refine
+   search over `configs/sweeps/lam*.yaml` (trains the coarse anchors, then only
+   the grid neighbours of the best-VAL λ until both are worse — typically 4-6
+   of the 8 overlays) → `scripts/select_lambda.py` picks the lowest-VAL-error λ
+   → copy it into `configs/vlm.yaml`. TEST is never used to choose λ.
 3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
    → QLoRA adapters + train cards for the two conditions (GPU; each blends the
    privileged-feature teacher into its train targets; deploys the best-by-val-loss
