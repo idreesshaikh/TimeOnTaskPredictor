@@ -81,7 +81,9 @@ uv run python scripts/train_baseline.py
 uv run python scripts/make_lupi_teacher.py
 
 # 2b. Pick the distillation weight λ on VALIDATION (not TEST): train the
-#     image+features model at a few λ values, keep whichever generalizes best.
+#     image+features model at each λ (fast — on a 15k train subsample, full VAL;
+#     see configs/sweeps/_base.yaml), keep whichever generalizes best. The final
+#     run in step 3 uses full train data.
 for L in lam00 lam10 lam25 lam35 lam50 lam60 lam75 lam90; do
   uv run python -m totvlm.train --config configs/sweeps/$L.yaml
 done
@@ -114,7 +116,7 @@ Reports land in `artifacts/`: `dataset_card.md`, `baseline_report.md`,
 `eval_report.md`, `external_report.md`, `aim_analysis.md`, and the figure set
 in `artifacts/figures/`.
 
-## Running on a SLURM cluster — two jobs
+## Running on a SLURM cluster — three jobs
 
 ```bash
 # one-time setup on the login node:
@@ -124,8 +126,14 @@ wandb login                    # or export WANDB_MODE=offline + `wandb sync`
 mkdir -p logs
 sbatch scripts/setup.sbatch    # CPU: raw download → dataset → baseline → LUPI teacher → external prep
 # ...when it finishes:
+sbatch scripts/sweep.sbatch    # GPU: train each λ on a subsample → prints the VAL winner
+#   → set that λ as lupi.lambda in configs/vlm.yaml, then:
 sbatch scripts/train.sbatch    # GPU: the two VLM conditions → eval + figures → external
 ```
+
+The λ sweep is a one-time selection step; once `configs/vlm.yaml` has the chosen
+λ you can re-run `train.sbatch` alone. Pick the winner from the `sweep_%j.out`
+log (or re-run `uv run python scripts/select_lambda.py`).
 
 Every stage is idempotent and fetching / training are resumable (training
 auto-resumes from the last epoch checkpoint) — **if a job hits its time

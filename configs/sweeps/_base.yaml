@@ -1,0 +1,9 @@
+# Shared settings for the λ sweep (VALIDATION selection only). Inherits the full
+# v2 recipe from vlm.yaml and adds ONE thing: a capped, seeded TRAIN subsample so
+# each λ trains fast. VAL stays FULL, so the signal used to pick λ is unaffected.
+# The final configs/vlm.yaml run has NO cap → full train data. Each lam*.yaml
+# overlay below sets only its own λ + output paths.
+base: ../vlm.yaml
+
+train:
+  max_train_rows: 15000   # ~1/6 of train ⇒ ~6× faster per λ; raise for more signal
