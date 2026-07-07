@@ -5,5 +5,12 @@
 # overlay below sets only its own λ + output paths.
 base: ../vlm.yaml
 
+sweep:                       # scripts/run_sweep.py bracket-and-refine search:
+  coarse: [0.0, 0.35, 0.75]  # anchors trained first (λ=0 doubles as the
+                             # no-distillation ablation), then only the grid
+                             # neighbours of the best-VAL λ until both are
+                             # worse (unimodal-in-λ assumption) — so a typical
+                             # sweep trains 4-6 of the 8 overlays, not all 8
+
 train:
   max_train_rows: 15000   # ~1/6 of train ⇒ ~6× faster per λ; raise for more signal
