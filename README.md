@@ -87,7 +87,7 @@ uv run python scripts/make_lupi_teacher.py
 for L in lam00 lam10 lam25 lam35 lam50 lam60 lam75 lam90; do
   uv run python -m totvlm.train --config configs/sweeps/$L.yaml
 done
-uv run python scripts/select_lambda.py     # prints the VAL winner → set it in configs/vlm.yaml
+uv run python scripts/select_lambda.py --write   # picks VAL winner + writes it into configs/vlm.yaml
 
 # 3. VLM fine-tuning (CUDA GPU) — always smoke-test first; two conditions,
 #    each blending the teacher into its train targets (base + one overlay)
@@ -126,14 +126,16 @@ wandb login                    # or export WANDB_MODE=offline + `wandb sync`
 mkdir -p logs
 sbatch scripts/setup.sbatch    # CPU: raw download → dataset → baseline → LUPI teacher → external prep
 # ...when it finishes:
-sbatch scripts/sweep.sbatch    # GPU: train each λ on a subsample → prints the VAL winner
-#   → set that λ as lupi.lambda in configs/vlm.yaml, then:
+sbatch scripts/sweep.sbatch    # GPU: train each λ on a subsample → picks the VAL
+                               #      winner and writes it into configs/vlm.yaml
 sbatch scripts/train.sbatch    # GPU: the two VLM conditions → eval + figures → external
 ```
 
-The λ sweep is a one-time selection step; once `configs/vlm.yaml` has the chosen
-λ you can re-run `train.sbatch` alone. Pick the winner from the `sweep_%j.out`
-log (or re-run `uv run python scripts/select_lambda.py`).
+The λ sweep is a one-time selection step: it writes the chosen `lupi.lambda`
+into `configs/vlm.yaml` for you (vlm_task.yaml inherits it), so you just submit
+`train.sbatch` next. The winner is also printed in the `sweep_%j.out` log, and
+`uv run python scripts/select_lambda.py` re-prints it anytime (add `--write` to
+re-apply it).
 
 Every stage is idempotent and fetching / training are resumable (training
 auto-resumes from the last epoch checkpoint) — **if a job hits its time

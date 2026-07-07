@@ -6,7 +6,9 @@ Each sweep overlay (configs/sweeps/lam*.yaml) trains the image+features model
 with one global λ and writes a train card. This reads those cards, and for each
 reports the BEST validation decode MAE(log) over the run's eval passes — i.e.
 the metric the deployed (best) checkpoint achieves. It ranks the λ values and
-names the winner to copy into configs/vlm.yaml.
+names the winner. With --write it also patches `lupi.lambda` in configs/vlm.yaml
+to that winner (comments preserved), so the final two-condition run needs no
+manual edit; vlm_task.yaml inherits the value via `base: vlm.yaml`.
 
 This never opens a prediction cache or the TEST split: selection is a pure
 VAL-set decision, so the evaluate-once discipline for TEST stays intact."""
@@ -17,6 +19,7 @@ import glob
 import json
 import re
 import sys
+from pathlib import Path
 
 _JSON_BLOCK = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
 
@@ -51,11 +54,30 @@ def _summarise(path: str) -> dict | None:
     }
 
 
+def write_lambda(target: str, lam) -> None:
+    """Patch the single `lupi.lambda:` scalar in `target` (a vlm config) to
+    `lam`, preserving the line's inline comment and the rest of the file."""
+    path = Path(target)
+    text = path.read_text()
+    new, n = re.subn(
+        r"(?m)^(\s*lambda:\s*)[-\d.]+(.*)$",
+        lambda m: f"{m.group(1)}{lam}{m.group(2)}", text, count=1,
+    )
+    if n == 0:
+        raise SystemExit(f"no scalar 'lambda:' line found in {target} to update")
+    path.write_text(new)
+    print(f"wrote  lupi.lambda: {lam}  → {target}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cards", nargs="*",
                     default=sorted(glob.glob("artifacts/sweeps/*_card.md")),
                     help="sweep train cards (default: artifacts/sweeps/*_card.md)")
+    ap.add_argument("--write", action="store_true",
+                    help="patch lupi.lambda in --target to the winner")
+    ap.add_argument("--target", default="configs/vlm.yaml",
+                    help="config to patch with --write (default: configs/vlm.yaml)")
     args = ap.parse_args()
     if not args.cards:
         sys.exit("no sweep cards found — train configs/sweeps/lam*.yaml first")
@@ -70,8 +92,16 @@ def main() -> None:
         mark = "  ← winner" if i == 0 else ""
         print(f"{r['lambda']:>6}  {r['best_val_mae_log']:>18.4f}  "
               f"{r['best_val_eval_loss']:>18.4f}  {r['card']}{mark}")
-    print(f"\nSelected on VALIDATION: set  lupi.lambda: {rows[0]['lambda']}  "
-          f"in configs/vlm.yaml, then run the final two conditions.")
+
+    winner = rows[0]["lambda"]
+    if args.write:
+        write_lambda(args.target, winner)
+        print(f"\nSelected on VALIDATION: lupi.lambda = {winner} "
+              f"(written to {args.target}). Now run the final two conditions.")
+    else:
+        print(f"\nSelected on VALIDATION: set  lupi.lambda: {winner}  "
+              f"in configs/vlm.yaml (or re-run with --write), then run the "
+              f"final two conditions.")
 
 
 if __name__ == "__main__":
