@@ -27,6 +27,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 scripts/setup.sbatch
+scripts/sweep.sbatch
 scripts/train.sbatch
 
 # PyInstaller
