@@ -20,18 +20,23 @@ paths:
 
 lupi:                               # privileged features → soft training target
   teacher_preds: artifacts/lupi_teacher_preds.parquet  # scripts/make_lupi_teacher.py
-  lambda: 0.5                       # soft-target weight: 0 = plain SFT,
-                                    # 1 = pure teacher; blended in log1p space
+  lambda: 0.5                       # single global soft-target weight: 0 = plain
+                                    # SFT on the true label, 1 = pure teacher;
+                                    # blended in log1p space. THE distillation
+                                    # hyperparameter — selected on VAL, never on
+                                    # TEST (see configs/sweeps/ + select_lambda.py)
 
 model:
   checkpoint: unsloth/Qwen3-VL-4B-Instruct
   load_in_4bit: true                # QLoRA
   gradient_checkpointing: true      # Unsloth offloaded checkpointing
   max_seq_length: 1536              # ~768 visual tokens + prompt + answer, w/ headroom
-  finetune_vision_layers: false     # SPEC.md: vision frozen
+  finetune_vision_layers: true      # v2: LoRA the vision layers too, so the
+                                    # screenshot itself can drive the estimate
+                                    # (both conditions identical — SPEC.md updated)
   lora_r: 16
   lora_alpha: 16
-  lora_dropout: 0.0
+  lora_dropout: 0.05                # v2: regularize — the first run overfit by epoch 2
 
 image:                              # bounds Qwen3-VL visual tokens (28 px grid)
   max_side: 1024
@@ -42,9 +47,13 @@ data:
   include_task_title: false         # image only at inference; true = +task (vlm_task.yaml)
 
 train:
-  learning_rate: 2.0e-4
+  learning_rate: 1.0e-4             # v2: was 2e-4 — the old rate collapsed the
+                                    # loss in ~75 steps then overfit for the rest
   num_epochs: 2                     # ~87k resolved train screens at the 100k
                                     # row budget — 2 passes ≈ 11k optim steps
+  evals_per_epoch: 4                # v2: evaluate + checkpoint 4×/epoch and keep
+                                    # the best (lowest val loss) as `final/` —
+                                    # epoch-only saving deployed the overfit epoch
   batch_size: 4                     # per-device micro-batch (verify memory fit
   grad_accum: 4                     #  with --dry-run first) → effective 16
   eval_batch_size: 4
@@ -54,7 +63,7 @@ train:
   optim: adamw_8bit
   max_grad_norm: 1.0
   logging_steps: 5
-  save_total_limit: 2
+  save_total_limit: 2               # best checkpoint is always kept on top of this
   report_to: wandb
   wandb_project: tot-vlm
   run_name: qwen3vl4b-qlora-pathA

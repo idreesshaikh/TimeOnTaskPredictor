@@ -98,7 +98,12 @@ def blend_lupi_targets(
     """TRAIN targets become a λ-mix of the teacher's out-of-fold prediction
     and the true label, mixed in log1p space and written back to `target_s`.
     Rows the teacher does not cover keep the true label. Call on the TRAIN
-    split only; val/test targets are never blended."""
+    split only; val/test targets are never blended.
+
+    `lam` is a single global blend weight (0 = plain SFT on the true label,
+    1 = pure teacher). It is the sole distillation hyperparameter and is
+    selected on the VALIDATION split — see configs/sweeps/."""
+    lam = float(lam)
     if not 0.0 <= lam <= 1.0:
         raise ValueError(f"lupi lambda must be in [0, 1], got {lam}")
     merged = df.merge(

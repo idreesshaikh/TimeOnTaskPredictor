@@ -80,6 +80,13 @@ uv run python scripts/train_baseline.py
 #     targets BOTH conditions blend in at training
 uv run python scripts/make_lupi_teacher.py
 
+# 2b. Pick the distillation weight λ on VALIDATION (not TEST): train the
+#     image+features model at a few λ values, keep whichever generalizes best.
+for L in lam00 lam10 lam25 lam35 lam50 lam60 lam75 lam90; do
+  uv run python -m totvlm.train --config configs/sweeps/$L.yaml
+done
+uv run python scripts/select_lambda.py     # prints the VAL winner → set it in configs/vlm.yaml
+
 # 3. VLM fine-tuning (CUDA GPU) — always smoke-test first; two conditions,
 #    each blending the teacher into its train targets (base + one overlay)
 uv run python -m totvlm.train --config configs/vlm.yaml --dry-run

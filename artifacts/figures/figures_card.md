@@ -1,6 +1,6 @@
 # Figures card
 
-_Generated 2026-07-05T15:55:11+00:00 · config `configs/figures.yaml` · seed 42_
+_Generated 2026-07-07T03:50:35+00:00 · config `configs/figures.yaml` · seed 42_
 
 Regenerable anytime: `uv run python scripts/make_figures.py` (CPU-only, reads cached artifacts, never runs a model).
 
@@ -14,4 +14,4 @@ Regenerable anytime: `uv run python scripts/make_figures.py` (CPU-only, reads ca
 | fig_calibration | ✅ written | — |
 | fig_feature_importance | ✅ written | — |
 
-Fixed model colors across every figure: train-mean floor `#c3c2b7` · train-median floor `#898781` · LightGBM (no image) `#1baf7a` · VLM (screen) `#2a78d6` · VLM (screen+task) `#4a3aa7`
+Fixed model colors across every figure: train-mean floor `#c3c2b7` · train-median floor `#898781` · LightGBM (no image) `#1baf7a` · VLM (image+features) `#2a78d6` · VLM (image+features+task) `#4a3aa7`
