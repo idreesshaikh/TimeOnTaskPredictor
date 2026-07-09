@@ -29,6 +29,8 @@ MANIFEST
 scripts/setup.sbatch
 scripts/sweep.sbatch
 scripts/train.sbatch
+scripts/sweep_lam.sbatch
+scripts/finalize_select.sbatch
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -227,14 +229,14 @@ data/
 webchain_raw/
 webchain_dataset/
 checkpoints/
-artifacts/vlm_ckpt*/
+artifacts_lam50/vlm_ckpt*/
 wandb/
 logs/
 
 # Extra
 /docs/
 src/Time_On_Task_Predictor.egg-info
-artifacts/vlm_task_ckpt*/
+artifacts_lam50/vlm_task_ckpt*/
 
 .DS_Store
 

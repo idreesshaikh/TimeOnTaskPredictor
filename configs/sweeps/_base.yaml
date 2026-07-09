@@ -14,3 +14,10 @@ sweep:                       # scripts/run_sweep.py bracket-and-refine search:
 
 train:
   max_train_rows: 15000   # ~1/6 of train ⇒ ~6× faster per λ; raise for more signal
+
+eval:
+  decode_samples: 128     # per-eval-pass decode = trend curve ONLY (one-by-one
+                          # decode ≈2 min/pass). Too small to rank λ values —
+                          # selection uses the FULL-val decode that
+                          # scripts/decode_val.py runs on the deployed
+                          # checkpoint after training (n = whole val split).

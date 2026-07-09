@@ -19,7 +19,7 @@ from totvlm.data import (
     parse_dwell_output,
 )
 
-CAP = 24.954   # train-split p95 winsor cap (artifacts/dataset_card.md)
+CAP = 24.954   # train-split p95 winsor cap (artifacts_lam50/dataset_card.md)
 
 
 # ── format / parse ────────────────────────────────────────────────────────────

@@ -12,8 +12,8 @@ baseline_config: configs/baseline.yaml
 
 paths:
   rows_final: data/processed/rows_final.parquet
-  teacher_preds: artifacts/lupi_teacher_preds.parquet
-  card: artifacts/lupi_teacher_card.md
+  teacher_preds: artifacts_lam50/lupi_teacher_preds.parquet
+  card: artifacts_lam50/lupi_teacher_card.md
 
 teacher:
   k_folds: 5      # grouped by registrable domain; predict fold i, early-stop

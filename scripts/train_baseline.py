@@ -211,9 +211,9 @@ def main():
         f"seed {seed} · best iteration {best_iter}_",
         "",
         "Target: `y = log1p(dwell_s)` (winsorized at the train-split p95 cap; "
-        "see `artifacts/dataset_card.md`). Trained on TRAIN, early-stopped on "
+        "see `artifacts_lam50/dataset_card.md`). Trained on TRAIN, early-stopped on "
         "VAL l1, evaluated ONCE on TEST. Splits are domain-disjoint "
-        "(`artifacts/splits.json`).",
+        "(`artifacts_lam50/splits.json`).",
         "",
         "## Row accounting",
         "",

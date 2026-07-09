@@ -54,7 +54,7 @@ def run_predict(cfg: dict, vcfg: dict, items: pd.DataFrame) -> None:
 
     if not torch.cuda.is_available():
         sys.exit("PREDICT stage needs a CUDA GPU (`uv sync --extra vlm`). "
-                 "If artifacts/external_preds.parquet exists, use "
+                 "If artifacts_lam50/external_preds.parquet exists, use "
                  "--report-only.")
     adapters = Path(cfg["paths"]["adapters"])
     if not adapters.exists():

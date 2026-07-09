@@ -15,11 +15,11 @@ seed: 42
 
 paths:
   rows_final: data/processed/rows_final.parquet   # split + winsorized dwell_s
-  output_dir: artifacts/vlm_ckpt                  # trainer checkpoints + final adapters
-  train_card: artifacts/vlm_train_card.md         # stage card (stats, VRAM, parse rate)
+  output_dir: artifacts_lam50/vlm_ckpt                  # trainer checkpoints + final adapters
+  train_card: artifacts_lam50/vlm_train_card.md         # stage card (stats, VRAM, parse rate)
 
 lupi:                               # privileged features → soft training target
-  teacher_preds: artifacts/lupi_teacher_preds.parquet  # scripts/make_lupi_teacher.py
+  teacher_preds: artifacts_lam50/lupi_teacher_preds.parquet  # scripts/make_lupi_teacher.py
   lambda: 0.5                       # single global soft-target weight: 0 = plain
                                     # SFT on the true label, 1 = pure teacher;
                                     # blended in log1p space. THE distillation
@@ -71,6 +71,7 @@ train:
 eval:
   decode_samples: 32                # val screens greedily decoded per epoch
   max_new_tokens: 12                # "dwell_seconds: 9999.9" ≈ 10 tokens
+  decode_batch_size: 16             # batched FULL-val decode (scripts/decode_val.py)
 
 dry_run:                            # --dry-run: SAME batch/pixels (doubles as the
   n_train: 50                       # memory smoke test), tiny data + few steps
