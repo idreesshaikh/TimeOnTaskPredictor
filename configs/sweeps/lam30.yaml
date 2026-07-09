@@ -4,8 +4,8 @@
 base: _base.yaml
 
 paths:
-  output_dir: artifacts_lam50/sweeps/vlm_lam30
-  train_card: artifacts_lam50/sweeps/vlm_lam30_card.md
+  output_dir: artifacts/sweeps/vlm_lam30
+  train_card: artifacts/sweeps/vlm_lam30_card.md
 
 lupi:
   lambda: 0.3

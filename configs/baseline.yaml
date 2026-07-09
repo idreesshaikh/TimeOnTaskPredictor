@@ -4,8 +4,8 @@ seed: 42
 paths:
   rows_final: data/processed/rows_final.parquet
   features_parquet: data/processed/baseline_features.parquet
-  report: artifacts_lam50/baseline_report.md
-  model_out: artifacts_lam50/baseline_lgbm.txt
+  report: artifacts/baseline_report.md
+  model_out: artifacts/baseline_lgbm.txt
 
 features:
   # seeded PREFIX-STABLE row sample; only feature vectors are cached (trees

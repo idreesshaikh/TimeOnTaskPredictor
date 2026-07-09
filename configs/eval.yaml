@@ -9,11 +9,11 @@ baseline_config: configs/baseline.yaml
 
 paths:
   rows_final: data/processed/rows_final.parquet
-  baseline_model: artifacts_lam50/baseline_lgbm.txt
-  report: artifacts_lam50/eval_report.md
-  qualitative_dir: artifacts_lam50/qualitative
-  metrics_json: artifacts_lam50/eval_metrics.json
-  predictions_parquet: artifacts_lam50/eval_predictions.parquet  # make_figures input
+  baseline_model: artifacts/baseline_lgbm.txt
+  report: artifacts/eval_report.md
+  qualitative_dir: artifacts/qualitative
+  metrics_json: artifacts/eval_metrics.json
+  predictions_parquet: artifacts/eval_predictions.parquet  # make_figures input
 
 # One entry per trained condition; caches are filled if missing, missing
 # conditions are listed as pending, never silently skipped. Both conditions
@@ -22,19 +22,19 @@ paths:
 # inference is screenshot(+task) only. Their gap = the goal-driven share.
 vlm_models:
   - name: "VLM (image+features)"       # screenshot in, features distilled at train time
-    adapters: artifacts_lam50/vlm_ckpt/final
-    preds: artifacts_lam50/vlm_test_preds.parquet
+    adapters: artifacts/vlm_ckpt/final
+    preds: artifacts/vlm_test_preds.parquet
     include_task_title: false
   - name: "VLM (image+features+task)"  # + the task title in the prompt
-    adapters: artifacts_lam50/vlm_task_ckpt/final
-    preds: artifacts_lam50/vlm_task_test_preds.parquet
+    adapters: artifacts/vlm_task_ckpt/final
+    preds: artifacts/vlm_task_test_preds.parquet
     include_task_title: true
   # Optional ablation — is fine-tuning even necessary? Same backbone, no
   # training, same prompt+task title. Uncomment to add the row (costs one
   # extra decode pass over TEST in the GPU job):
   # - name: "VLM (zero-shot)"
   #   adapters: unsloth/Qwen3-VL-4B-Instruct
-  #   preds: artifacts_lam50/vlm_zeroshot_test_preds.parquet
+  #   preds: artifacts/vlm_zeroshot_test_preds.parquet
   #   include_task_title: true
 
 predict:                    # GPU stage

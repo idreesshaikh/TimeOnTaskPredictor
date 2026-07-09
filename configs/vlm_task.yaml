@@ -6,8 +6,8 @@
 base: vlm.yaml
 
 paths:
-  output_dir: artifacts_lam50/vlm_task_ckpt             # separate checkpoints
-  train_card: artifacts_lam50/vlm_task_train_card.md    # separate stage card
+  output_dir: artifacts/vlm_task_ckpt             # separate checkpoints
+  train_card: artifacts/vlm_task_train_card.md    # separate stage card
 
 data:
   include_task_title: true          # ← the ONLY difference vs configs/vlm.yaml

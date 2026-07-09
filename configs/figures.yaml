@@ -1,5 +1,5 @@
 # Paper figure factory (scripts/make_figures.py) — CPU-only, regenerable
-# from cached artifacts_lam50.
+# from cached artifacts.
 seed: 42
 
 # read so figures can never disagree with the tables in eval_report.md
@@ -7,11 +7,11 @@ eval_config: configs/eval.yaml
 
 paths:
   rows_final: data/processed/rows_final.parquet
-  eval_metrics: artifacts_lam50/eval_metrics.json          # written by evaluate.py
-  eval_predictions: artifacts_lam50/eval_predictions.parquet
-  baseline_model: artifacts_lam50/baseline_lgbm.txt
-  out_dir: artifacts_lam50/figures
-  card: artifacts_lam50/figures/figures_card.md
+  eval_metrics: artifacts/eval_metrics.json          # written by evaluate.py
+  eval_predictions: artifacts/eval_predictions.parquet
+  baseline_model: artifacts/baseline_lgbm.txt
+  out_dir: artifacts/figures
+  card: artifacts/figures/figures_card.md
 
 style:
   dpi: 200                  # print-quality PNG

@@ -1,6 +1,6 @@
 """Domain-disjoint train/val/test splits (SPEC.md rule): unit = registrable
 domain (eTLD+1), 70/15/15 by domain count, seeded shuffle. Assignments are
-saved to artifacts_lam50/splits.json and REUSED, never recomputed. Rows with a
+saved to artifacts/splits.json and REUSED, never recomputed. Rows with a
 missing/unassigned domain get split=None and are excluded everywhere."""
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pandas as pd
 
 SEED = 42
 FRACTIONS = {"train": 0.70, "val": 0.15, "test": 0.15}
-SPLITS_PATH = Path("artifacts_lam50/splits.json")
+SPLITS_PATH = Path("artifacts/splits.json")
 SPLIT_ORDER = ("train", "val", "test")
 
 
