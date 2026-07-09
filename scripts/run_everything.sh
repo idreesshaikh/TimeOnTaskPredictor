@@ -66,7 +66,7 @@ echo
 echo "All queued. Check on it with:  squeue -u \$USER"
 echo "Gate log:   logs/totvlm-gate_${GATE_ID}.out (after the sweeps finish)"
 echo "Final log:  logs/train_${TRAIN_ID}.out"
-echo "Results land in artifacts_lam50/ — eval_report.md is the paper table."
+echo "Results land in artifacts/ — eval_report.md is the paper table."
 echo "If 'final' sits in DependencyNeverSatisfied, the gate failed — read its"
 echo "log; it names the λ jobs to resubmit and the two commands to rerun."
 squeue -u "$USER" 2>/dev/null || true

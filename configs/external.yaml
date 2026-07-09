@@ -11,12 +11,12 @@ paths:
   # The FROZEN image+features model (screenshot in, features distilled at
   # train time). Its privileged features were train-time only, so this
   # images-only external set stays a valid zero-shot probe.
-  adapters: artifacts_lam50/vlm_ckpt/final
+  adapters: artifacts/vlm_ckpt/final
   external_root: data/external
-  card: artifacts_lam50/external_card.md
-  preds: artifacts_lam50/external_preds.parquet
-  report: artifacts_lam50/external_report.md
-  scatter_png: artifacts_lam50/external_scatter.png
+  card: artifacts/external_card.md
+  preds: artifacts/external_preds.parquet
+  report: artifacts/external_report.md
+  scatter_png: artifacts/external_scatter.png
 
 vsgui10k:
   zip_url: https://osf.io/download/wbxdr/      # OSF project hmg9b
@@ -37,7 +37,7 @@ report:
 aim:                          # theory-grounding analysis (scripts/analyze_aim.py),
                               # post-hoc over the CACHED zero-shot predictions
   metrics_csv: data/external/vsgui10k/aim_metrics.csv
-  report: artifacts_lam50/aim_analysis.md
+  report: artifacts/aim_analysis.md
   metrics:                    # AIM column → construct (readable name)
     m4_0: contour_density
     m5_0: figure_ground_contrast

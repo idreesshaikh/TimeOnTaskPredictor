@@ -1,6 +1,6 @@
 """Pick the distillation weight λ from the sweep — on VALIDATION only.
 
-    uv run python scripts/select_lambda.py [artifacts_lam50/sweeps/*_card.md]
+    uv run python scripts/select_lambda.py [artifacts/sweeps/*_card.md]
 
 Each sweep overlay (configs/sweeps/lam*.yaml) trains the image+features model
 with one global λ and writes a train card. This reads those cards, and for each
@@ -92,8 +92,8 @@ def write_lambda(target: str, lam) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cards", nargs="*",
-                    default=sorted(glob.glob("artifacts_lam50/sweeps/*_card.md")),
-                    help="sweep train cards (default: artifacts_lam50/sweeps/*_card.md)")
+                    default=sorted(glob.glob("artifacts/sweeps/*_card.md")),
+                    help="sweep train cards (default: artifacts/sweeps/*_card.md)")
     ap.add_argument("--write", action="store_true",
                     help="patch lupi.lambda in --target to the winner")
     ap.add_argument("--target", default="configs/vlm.yaml",

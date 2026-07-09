@@ -1,5 +1,5 @@
 """Dataset pipeline: raw WebChain JSON → training-ready rows. Idempotent
-stages, each writing a card to artifacts_lam50/. Run in order:
+stages, each writing a card to artifacts/. Run in order:
 
   python scripts/build_dataset.py <json_dir> --audit     # raw_audit.md
   python scripts/build_dataset.py <json_dir> --labels    # rows.parquet
@@ -69,7 +69,7 @@ def run_labels(json_dir: Path, rows_out: Path,
         "source": str(json_dir),
         "output": str(rows_out),
     }
-    card = Path("artifacts_lam50/rows_card.md")
+    card = Path("artifacts/rows_card.md")
     card.parent.mkdir(parents=True, exist_ok=True)
     card.write_text(
         "# Dwell label rows card\n\n```json\n"
@@ -238,10 +238,10 @@ def run_resolve_images(
                 "populate the full cache (resumable; cached files are skipped) "
                 "and refresh this report."
             )
-    write_resolution_report(stats, Path("artifacts_lam50/image_resolution.md"))
+    write_resolution_report(stats, Path("artifacts/image_resolution.md"))
     log.info(
         f"resolved rows: {stats['n_rows_resolved']}/{stats['n_rows']} "
-        f"({stats['pct_rows_resolved']}%) — report → artifacts_lam50/image_resolution.md"
+        f"({stats['pct_rows_resolved']}%) — report → artifacts/image_resolution.md"
     )
 
 
@@ -309,8 +309,8 @@ def main() -> None:
     ap.add_argument("json_dir", nargs="?", default="data/raw/all_json_files",
                     help="Directory with raw trajectory JSON files")
     ap.add_argument("--audit", action="store_true",
-                    help="Write artifacts_lam50/raw_audit.md (no fetching)")
-    ap.add_argument("--audit-out", default="artifacts_lam50/raw_audit.md")
+                    help="Write artifacts/raw_audit.md (no fetching)")
+    ap.add_argument("--audit-out", default="artifacts/raw_audit.md")
     ap.add_argument("--labels", action="store_true",
                     help="Build dwell label rows (no fetching)")
     ap.add_argument("--rows-out", default="data/processed/rows.parquet")

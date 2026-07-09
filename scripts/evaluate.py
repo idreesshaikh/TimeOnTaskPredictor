@@ -313,7 +313,7 @@ def edge_paragraph(vlm: dict, lgbm: dict) -> str:
             "The advantage concentrates in **in-page** interactions, where "
             "no page load is bundled into the dwell — consistent with the "
             "screenshot capturing genuine cognitive/visual-complexity "
-            "signal rather than latency artifacts_lam50."
+            "signal rather than latency artifacts."
         )
     else:
         verdict = (
@@ -549,7 +549,7 @@ def run_report(
         "",
         "Target: `y = log1p(dwell_s)`, dwell winsorized at the train-split "
         f"p95 cap ({winsor_cap:.3f} s). Splits are domain-disjoint "
-        "(`artifacts_lam50/splits.json`); TEST domains were never seen in "
+        "(`artifacts/splits.json`); TEST domains were never seen in "
         "training or tuning. Metrics via `totvlm.scoring` — identical to "
         "the baseline report.",
         "",

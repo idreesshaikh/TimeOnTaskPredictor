@@ -1,4 +1,4 @@
-"""The paper's figure set, regenerated from cached artifacts_lam50 on any CPU box.
+"""The paper's figure set, regenerated from cached artifacts on any CPU box.
 
     uv run python scripts/make_figures.py [--config configs/figures.yaml]
 
@@ -465,7 +465,7 @@ def main() -> None:
         f"config `{args.config}` · seed {cfg['seed']}_",
         "",
         "Regenerable anytime: `uv run python scripts/make_figures.py` "
-        "(CPU-only, reads cached artifacts_lam50, never runs a model).",
+        "(CPU-only, reads cached artifacts, never runs a model).",
         "",
         "| figure | status | input |",
         "|---|---|---|",
