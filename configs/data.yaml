@@ -4,8 +4,8 @@ seed: 42
 paths:
   rows_resolved: data/processed/rows_resolved.parquet   # input (has img_resolved)
   rows_final: data/processed/rows_final.parquet         # output: + split/dwell_s/y
-  splits_json: artifacts/splits.json
-  dataset_card: artifacts/dataset_card.md
+  splits_json: artifacts_lam50/splits.json
+  dataset_card: artifacts_lam50/dataset_card.md
 
 splits:                    # by REGISTRABLE DOMAIN count, never by trajectory/step
   fractions:

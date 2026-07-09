@@ -7,7 +7,7 @@ Strictly POST-HOC over the cached zero-shot predictions — never runs the
 model, never feeds training/tuning (allowlisted in test_external_guard).
 Regressions per subset: human~AIM, VLM~AIM, and whether the VLM's residual
 (what clutter can't explain) still tracks human time. Targets log1p(s), AIM
-z-scored, in-sample OLS R² stated as descriptive. → artifacts/aim_analysis.md"""
+z-scored, in-sample OLS R² stated as descriptive. → artifacts_lam50/aim_analysis.md"""
 from __future__ import annotations
 
 import argparse

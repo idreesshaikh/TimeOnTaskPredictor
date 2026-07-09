@@ -4,11 +4,11 @@
 base: _base.yaml
 
 paths:
-  output_dir: artifacts_lam50/sweeps/vlm_lam50
-  train_card: artifacts_lam50/sweeps/vlm_lam50_card.md
+  output_dir: artifacts_lam50/sweeps/vlm_lam55
+  train_card: artifacts_lam50/sweeps/vlm_lam55_card.md
 
 lupi:
-  lambda: 0.5
+  lambda: 0.55
 
 train:
-  run_name: qwen3vl4b-sweep-lam50
+  run_name: qwen3vl4b-sweep-lam55

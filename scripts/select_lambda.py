@@ -1,6 +1,6 @@
 """Pick the distillation weight λ from the sweep — on VALIDATION only.
 
-    uv run python scripts/select_lambda.py [artifacts/sweeps/*_card.md]
+    uv run python scripts/select_lambda.py [artifacts_lam50/sweeps/*_card.md]
 
 Each sweep overlay (configs/sweeps/lam*.yaml) trains the image+features model
 with one global λ and writes a train card. This reads those cards, and for each
@@ -32,25 +32,45 @@ def _load_card(path: str) -> dict:
 
 
 def _summarise(path: str) -> dict | None:
-    """(λ, best VAL decode MAE(log), best VAL eval_loss) for one sweep card,
-    or None if the run produced no parsed eval pass yet."""
+    """(λ, VAL MAE(log), best VAL eval_loss) for one sweep card, or None if
+    the run produced nothing scoreable yet.
+
+    Preferred source: `<output_dir>/val_full_metrics.json` written by
+    scripts/decode_val.py — the deployed checkpoint decoded on the FULL val
+    split. Fallback (with a warning): the best per-pass card decode, which
+    uses only eval.decode_samples rows — too few to separate nearby λ values."""
     card = _load_card(path)
     lam = card.get("effective_config", {}).get("lupi", {})
     lam = lam.get("lambda") if isinstance(lam, dict) else lam
+    losses = [e["eval_loss"] for e in card.get("eval_losses", [])
+              if e.get("eval_loss") is not None]
+
+    full_path = Path(path[: -len("_card.md")]) / "val_full_metrics.json"
+    if full_path.is_file():
+        full = json.loads(full_path.read_text())
+        overall = full["metrics"]["overall"]
+        return {
+            "card": path,
+            "lambda": full.get("lambda", lam),
+            "best_val_mae_log": overall["mae_log"],
+            "best_val_eval_loss": min(losses) if losses else float("nan"),
+            "source": f"FULL val n={overall['n']}",
+        }
+
     maes = [
-        h["decoded_metrics"]["mae_log"]
+        (h["decoded_metrics"]["mae_log"], h["decoded_metrics"]["n"])
         for h in card.get("decode_history", [])
         if h.get("decoded_metrics", {}).get("n")
     ]
-    losses = [e["eval_loss"] for e in card.get("eval_losses", [])
-              if e.get("eval_loss") is not None]
     if not maes:
         return None
+    best_mae, n = min(maes)
     return {
         "card": path,
         "lambda": lam,
-        "best_val_mae_log": min(maes),
+        "best_val_mae_log": best_mae,
         "best_val_eval_loss": min(losses) if losses else float("nan"),
+        "source": f"card decodes n={n} (NOISY — run scripts/decode_val.py)",
     }
 
 
@@ -72,8 +92,8 @@ def write_lambda(target: str, lam) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cards", nargs="*",
-                    default=sorted(glob.glob("artifacts/sweeps/*_card.md")),
-                    help="sweep train cards (default: artifacts/sweeps/*_card.md)")
+                    default=sorted(glob.glob("artifacts_lam50/sweeps/*_card.md")),
+                    help="sweep train cards (default: artifacts_lam50/sweeps/*_card.md)")
     ap.add_argument("--write", action="store_true",
                     help="patch lupi.lambda in --target to the winner")
     ap.add_argument("--target", default="configs/vlm.yaml",
@@ -87,13 +107,25 @@ def main() -> None:
         sys.exit("no sweep card has a completed eval pass yet")
     rows.sort(key=lambda r: r["best_val_mae_log"])
 
-    print(f"{'λ':>6}  {'best VAL MAE(log)':>18}  {'best VAL eval_loss':>18}  card")
+    print(f"{'λ':>6}  {'VAL MAE(log)':>13}  {'best VAL eval_loss':>18}  "
+          f"{'source':>14}  card")
     for i, r in enumerate(rows):
         mark = "  ← winner" if i == 0 else ""
-        print(f"{r['lambda']:>6}  {r['best_val_mae_log']:>18.4f}  "
-              f"{r['best_val_eval_loss']:>18.4f}  {r['card']}{mark}")
+        print(f"{r['lambda']:>6}  {r['best_val_mae_log']:>13.4f}  "
+              f"{r['best_val_eval_loss']:>18.4f}  {r['source']:>14}  "
+              f"{r['card']}{mark}")
+
+    noisy = [r for r in rows if "NOISY" in r["source"]]
+    if noisy:
+        print(f"\nWARNING: {len(noisy)}/{len(rows)} λ values are ranked on "
+              f"tiny card decodes, not the full val split — run "
+              f"scripts/decode_val.py on them before trusting this ranking.")
 
     winner = rows[0]["lambda"]
+    if args.write and noisy:
+        sys.exit("\nREFUSING --write: the ranking mixes full-val and tiny "
+                 "card-decode numbers, so the winner may be noise. Run "
+                 "scripts/decode_val.py for every λ above, then re-run.")
     if args.write:
         write_lambda(args.target, winner)
         print(f"\nSelected on VALIDATION: lupi.lambda = {winner} "
