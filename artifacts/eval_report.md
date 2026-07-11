@@ -1,6 +1,6 @@
 # Evaluation report — Time-on-Task on held-out TEST domains (O2)
 
-_Generated 2026-07-07T03:50:20+00:00 · config `configs/eval.yaml` · seed 42_
+_Generated 2026-07-11T05:28:21+00:00 · config `configs/eval.yaml` · seed 42_
 
 Target: `y = log1p(dwell_s)`, dwell winsorized at the train-split p95 cap (24.954 s). Splits are domain-disjoint (`artifacts/splits.json`); TEST domains were never seen in training or tuning. Metrics via `totvlm.scoring` — identical to the baseline report.
 
@@ -9,7 +9,7 @@ Target: `y = log1p(dwell_s)`, dwell winsorized at the train-split p95 cap (24.95
 - Eval set: **9129** TEST rows with a resolved screenshot (2305 navigation / 6824 in-page)
 - Head-to-head subset (axTree also resolved for LightGBM): **9127** rows across **1232** tasks (median 6 covered steps/task)
 - VLM (image+features): parse tiers strict **9129** · labeled **0** · bare number **0** · failed **0** — **failure rate 0.00%**, failures imputed with the TRAIN median winsorized dwell (4.729 s), never dropped
-- VLM (image+features+task): parse tiers strict **9129** · labeled **0** · bare number **0** · failed **0** — **failure rate 0.00%**, failures imputed with the TRAIN median winsorized dwell (4.729 s), never dropped
+- VLM (image+features+task): parse tiers strict **9128** · labeled **0** · bare number **0** · failed **1** — **failure rate 0.01%**, failures imputed with the TRAIN median winsorized dwell (4.729 s), never dropped
 - Parsed predictions clipped to [0.0, 24.954] s (the training-target range)
 
 ## Per-screen head-to-head (identical rows)
@@ -25,12 +25,12 @@ Target: `y = log1p(dwell_s)`, dwell winsorized at the train-split p95 cap (24.95
 | LightGBM (no image) | overall | 9127 | 0.5228 | 0.6552 | 3.77 | 5.85 | 0.4683 | 6.65 | 5.16 |
 | LightGBM (no image) | navigation | 2304 | 0.5236 | 0.6510 | 6.01 | 8.40 | 0.2329 | 11.64 | 7.13 |
 | LightGBM (no image) | in_page | 6823 | 0.5225 | 0.6566 | 3.01 | 4.69 | 0.2040 | 4.96 | 4.50 |
-| VLM (image+features) | overall | 9127 | 0.5442 | 0.6967 | 3.91 | 6.13 | 0.3761 | 6.65 | 4.65 |
-| VLM (image+features) | navigation | 2304 | 0.5996 | 0.7629 | 6.33 | 8.77 | 0.2816 | 11.64 | 6.57 |
-| VLM (image+features) | in_page | 6823 | 0.5255 | 0.6729 | 3.10 | 4.92 | 0.2169 | 4.96 | 4.00 |
-| VLM (image+features+task) | overall | 9127 | 0.5630 | 0.7202 | 4.02 | 6.20 | 0.3368 | 6.65 | 4.81 |
-| VLM (image+features+task) | navigation | 2304 | 0.6144 | 0.7835 | 6.38 | 8.78 | 0.2198 | 11.64 | 6.88 |
-| VLM (image+features+task) | in_page | 6823 | 0.5457 | 0.6976 | 3.23 | 5.05 | 0.1845 | 4.96 | 4.11 |
+| VLM (image+features) | overall | 9127 | 0.5412 | 0.6822 | 3.90 | 6.15 | 0.3644 | 6.65 | 4.69 |
+| VLM (image+features) | navigation | 2304 | 0.6142 | 0.7741 | 6.56 | 9.15 | 0.1908 | 11.64 | 6.05 |
+| VLM (image+features) | in_page | 6823 | 0.5165 | 0.6483 | 3.00 | 4.73 | 0.1926 | 4.96 | 4.23 |
+| VLM (image+features+task) | overall | 9127 | 0.5536 | 0.7018 | 3.98 | 6.20 | 0.3134 | 6.65 | 4.80 |
+| VLM (image+features+task) | navigation | 2304 | 0.6093 | 0.7719 | 6.48 | 9.06 | 0.2384 | 11.64 | 6.11 |
+| VLM (image+features+task) | in_page | 6823 | 0.5347 | 0.6765 | 3.14 | 4.87 | 0.1421 | 4.96 | 4.35 |
 
 ## Task-level Time-on-Task (per-trajectory sums, identical rows)
 
@@ -41,53 +41,53 @@ Per-screen predictions are summed within each task and scored against the summed
 | train-mean floor | 1232 | 0.4514 | 0.5548 | 18.40 | 25.08 | 0.7028 | 48.14 | 36.97 |
 | train-median floor | 1232 | 0.4803 | 0.5857 | 19.13 | 25.94 | 0.7028 | 48.14 | 34.63 |
 | LightGBM (no image) | 1232 | 0.3802 | 0.4682 | 16.18 | 22.59 | 0.7687 | 48.14 | 37.73 |
-| VLM (image+features) | 1232 | 0.4612 | 0.5602 | 18.60 | 25.36 | 0.7325 | 48.14 | 33.96 |
-| VLM (image+features+task) | 1232 | 0.4519 | 0.5544 | 18.41 | 25.26 | 0.7170 | 48.14 | 35.09 |
+| VLM (image+features) | 1232 | 0.4466 | 0.5377 | 18.21 | 24.68 | 0.7482 | 48.14 | 34.31 |
+| VLM (image+features+task) | 1232 | 0.4499 | 0.5489 | 18.38 | 25.07 | 0.7294 | 48.14 | 35.10 |
 
 ## VLM conditions on the full eval set
 
 | model | subset | n | MAE (log) | RMSE (log) | MAE (s) | RMSE (s) | Spearman ρ | mean actual s | mean pred s |
 |---|---|---|---|---|---|---|---|---|---|
-| VLM (image+features) | overall | 9129 | 0.5443 | 0.6968 | 3.91 | 6.13 | 0.3759 | 6.65 | 4.65 |
-| VLM (image+features) | navigation | 2305 | 0.6001 | 0.7635 | 6.33 | 8.77 | 0.2808 | 11.64 | 6.57 |
-| VLM (image+features) | in_page | 6824 | 0.5254 | 0.6728 | 3.10 | 4.92 | 0.2169 | 4.96 | 4.00 |
-| VLM (image+features+task) | overall | 9129 | 0.5631 | 0.7202 | 4.03 | 6.20 | 0.3368 | 6.65 | 4.81 |
-| VLM (image+features+task) | navigation | 2305 | 0.6143 | 0.7834 | 6.38 | 8.78 | 0.2200 | 11.64 | 6.88 |
-| VLM (image+features+task) | in_page | 6824 | 0.5457 | 0.6976 | 3.23 | 5.05 | 0.1844 | 4.96 | 4.11 |
+| VLM (image+features) | overall | 9129 | 0.5412 | 0.6823 | 3.90 | 6.16 | 0.3642 | 6.65 | 4.69 |
+| VLM (image+features) | navigation | 2305 | 0.6146 | 0.7744 | 6.56 | 9.15 | 0.1900 | 11.64 | 6.05 |
+| VLM (image+features) | in_page | 6824 | 0.5164 | 0.6483 | 3.00 | 4.73 | 0.1925 | 4.96 | 4.23 |
+| VLM (image+features+task) | overall | 9129 | 0.5536 | 0.7019 | 3.98 | 6.20 | 0.3133 | 6.65 | 4.80 |
+| VLM (image+features+task) | navigation | 2305 | 0.6097 | 0.7722 | 6.49 | 9.06 | 0.2376 | 11.64 | 6.11 |
+| VLM (image+features+task) | in_page | 6824 | 0.5347 | 0.6764 | 3.14 | 4.87 | 0.1421 | 4.96 | 4.35 |
 
 ## Where does the signal live? (O2 answer)
 
-On identical rows, the image+features VLM's MAE(log) edge over LightGBM is **-0.0030 on in-page steps** (n=6823) and **-0.0761 on navigation steps** (n=2304); positive = VLM better. The VLM does not beat the baseline on either subset, so there is no edge to attribute — reading the screenshot at inference recovers no more than LightGBM's interpretable features here.
+On identical rows, the image+features VLM's MAE(log) edge over LightGBM is **+0.0060 on in-page steps** (n=6823) and **-0.0907 on navigation steps** (n=2304); positive = VLM better. The advantage concentrates in **in-page** interactions, where no page load is bundled into the dwell — consistent with the screenshot capturing genuine cognitive/visual-complexity signal rather than latency artifacts.
 
-Adding the task title changes MAE(log) by **-0.0188 overall** (-0.0202 in-page, -0.0147 navigation; positive = image+features+task better). Read: the task title adds little or nothing on top of the screen here — on this corpus, the predictable share of dwell is carried by the screen (and its distilled features) itself.
+Adding the task title changes MAE(log) by **-0.0124 overall** (-0.0182 in-page, +0.0049 navigation; positive = image+features+task better). Read: the task title adds little or nothing on top of the screen here — on this corpus, the predictable share of dwell is carried by the screen (and its distilled features) itself.
 
 ## Calibration (VLM (image+features), full eval set, decile bins by prediction)
 
-ECE-style weighted gap: **2.00 s** (reliability plot: `scripts/make_figures.py` → fig_calibration)
+ECE-style weighted gap: **1.96 s** (reliability plot: `scripts/make_figures.py` → fig_calibration)
 
 | bin | n | mean pred (s) | mean actual (s) | gap (s) |
 |---|---|---|---|---|
-| 0 | 913 | 2.04 | 3.59 | 1.55 |
-| 1 | 913 | 2.44 | 4.64 | 2.20 |
-| 2 | 913 | 2.95 | 5.19 | 2.24 |
-| 3 | 913 | 3.21 | 4.95 | 1.74 |
-| 4 | 913 | 3.54 | 6.43 | 2.89 |
-| 5 | 912 | 3.98 | 6.41 | 2.44 |
-| 6 | 913 | 4.34 | 6.35 | 2.01 |
-| 7 | 913 | 5.02 | 7.39 | 2.37 |
-| 8 | 913 | 8.49 | 10.93 | 2.44 |
-| 9 | 913 | 10.46 | 10.61 | 0.15 |
+| 0 | 913 | 2.80 | 3.37 | 0.57 |
+| 1 | 913 | 3.62 | 4.87 | 1.25 |
+| 2 | 913 | 3.80 | 5.00 | 1.20 |
+| 3 | 913 | 3.80 | 5.63 | 1.83 |
+| 4 | 913 | 4.00 | 6.28 | 2.28 |
+| 5 | 912 | 4.14 | 6.49 | 2.35 |
+| 6 | 913 | 4.74 | 7.06 | 2.32 |
+| 7 | 913 | 4.80 | 7.23 | 2.43 |
+| 8 | 913 | 5.82 | 9.13 | 3.30 |
+| 9 | 913 | 9.39 | 11.44 | 2.04 |
 
 ## Qualitative examples (VLM (image+features), `artifacts/qualitative/`)
 
 | file | bucket | pred (s) | actual (s) | step | raw output |
 |---|---|---|---|---|---|
-| 00_best_VI4XohvTsmxIjTPDejejG_5.png | best | 3.5 | 3.5 | in-page | `dwell_seconds: 3.5` |
-| 01_best_BtOX6hzcMJCzcWlyOqZri_2.png | best | 4.2 | 4.2 | in-page | `dwell_seconds: 4.2` |
-| 02_median_rD7TSV3VAYYUTiyL-r3Uf_1.png | median | 4.0 | 2.2 | in-page | `dwell_seconds: 4.0` |
-| 03_median_YDb6srZAao2d_7vafnwFU_2.png | median | 3.0 | 1.6 | in-page | `dwell_seconds: 3.0` |
-| 04_worst_KT5YmtH3y7XEHC7ra9NwT_14.png | worst | 10.0 | 0.1 | in-page | `dwell_seconds: 10.0` |
-| 05_worst_0N9Kq2l0-BRzh9kwbrMyJ_4.png | worst | 1.6 | 25.0 | in-page | `dwell_seconds: 1.6` |
+| 00_best_ekgiPOzzlKT-pCFLbv88v_5.png | best | 4.1 | 4.1 | in-page | `dwell_seconds: 4.1` |
+| 01_best_00LT5_wUZxuX3aDbbBPhL_3.png | best | 3.8 | 3.8 | in-page | `dwell_seconds: 3.8` |
+| 02_median_evjwKJFdiirkwoDzA1fGB_9.png | median | 7.8 | 4.7 | in-page | `dwell_seconds: 7.8` |
+| 03_median_1uL763YQQqfqcW-2SBPi-_2.png | median | 4.2 | 2.3 | in-page | `dwell_seconds: 4.2` |
+| 04_worst_a0lXqr6hGGUnkiBEtt6H2_6.png | worst | 8.0 | 0.2 | navigation | `dwell_seconds: 8.0` |
+| 05_worst_KT5YmtH3y7XEHC7ra9NwT_8.png | worst | 8.1 | 0.2 | navigation | `dwell_seconds: 8.1` |
 
 ## Full metrics (JSON)
 
@@ -193,65 +193,65 @@ ECE-style weighted gap: **2.00 s** (reliability plot: `scripts/make_figures.py` 
     "VLM (image+features)": {
       "overall": {
         "n": 9127,
-        "mae_log": 0.5441890283087386,
-        "rmse_log": 0.6966995877058152,
-        "mae_s": 3.911012578065082,
-        "rmse_s": 6.12569299869876,
-        "spearman_rho": 0.3760749894813157,
+        "mae_log": 0.5411667664823598,
+        "rmse_log": 0.682246059502533,
+        "mae_s": 3.899028136298893,
+        "rmse_s": 6.1542830959289,
+        "spearman_rho": 0.36442877341839736,
         "mean_actual_s": 6.648702070779008,
-        "mean_pred_s": 4.647551221650049
+        "mean_pred_s": 4.6921222745699565
       },
       "navigation": {
         "n": 2304,
-        "mae_log": 0.5996429939402441,
-        "rmse_log": 0.7629200108216286,
-        "mae_s": 6.325796875,
-        "rmse_s": 8.768448206822526,
-        "spearman_rho": 0.28164301430247096,
+        "mae_log": 0.6142469846705746,
+        "rmse_log": 0.7740883672474641,
+        "mae_s": 6.559289930555555,
+        "rmse_s": 9.152029327606423,
+        "spearman_rho": 0.19077236587843324,
         "mean_actual_s": 11.641744791666667,
-        "mean_pred_s": 6.5713541666666675
+        "mean_pred_s": 6.047743055555555
       },
       "in_page": {
         "n": 6823,
-        "mae_log": 0.5254632571208464,
-        "rmse_log": 0.672867871852728,
-        "mae_s": 3.0955849040011727,
-        "rmse_s": 4.922646241145048,
-        "spearman_rho": 0.21685124913258377,
+        "mae_log": 0.5164889381508859,
+        "rmse_log": 0.648300663644284,
+        "mae_s": 3.0007072841858418,
+        "rmse_s": 4.730843439468126,
+        "spearman_rho": 0.1925646169020559,
         "mean_actual_s": 4.962644555181005,
-        "mean_pred_s": 3.9979188040451414
+        "mean_pred_s": 4.234354389564707
       }
     },
     "VLM (image+features+task)": {
       "overall": {
         "n": 9127,
-        "mae_log": 0.5630202771226578,
-        "rmse_log": 0.7202359049131337,
-        "mae_s": 4.0248026514736495,
-        "rmse_s": 6.203015694242746,
-        "spearman_rho": 0.33677454695394055,
+        "mae_log": 0.5535575439495283,
+        "rmse_log": 0.7017861734152402,
+        "mae_s": 3.982782162813629,
+        "rmse_s": 6.19852686132986,
+        "spearman_rho": 0.31339708774240277,
         "mean_actual_s": 6.648702070779008,
-        "mean_pred_s": 4.806782075161609
+        "mean_pred_s": 4.7952590117234575
       },
       "navigation": {
         "n": 2304,
-        "mae_log": 0.6143539321765981,
-        "rmse_log": 0.7834960382665244,
-        "mae_s": 6.379493923611111,
-        "rmse_s": 8.777096245589442,
-        "spearman_rho": 0.2198380255596538,
+        "mae_log": 0.6093202418625415,
+        "rmse_log": 0.7718552798813664,
+        "mae_s": 6.482517361111111,
+        "rmse_s": 9.05947243379248,
+        "spearman_rho": 0.238379278936763,
         "mean_actual_s": 11.641744791666667,
-        "mean_pred_s": 6.877517361111112
+        "mean_pred_s": 6.108854166666666
       },
       "in_page": {
         "n": 6823,
-        "mae_log": 0.5456858580629658,
-        "rmse_log": 0.6975796620457932,
-        "mae_s": 3.2296672724607944,
-        "rmse_s": 5.045434075191686,
-        "spearman_rho": 0.18448797844484247,
+        "mae_log": 0.5347275196212881,
+        "rmse_log": 0.6764879567457541,
+        "mae_s": 3.138668151839367,
+        "rmse_s": 4.86632970896541,
+        "spearman_rho": 0.14214443269534913,
         "mean_actual_s": 4.962644555181005,
-        "mean_pred_s": 4.107533343104206
+        "mean_pred_s": 4.351682397772241
       }
     }
   },
@@ -288,23 +288,23 @@ ECE-style weighted gap: **2.00 s** (reliability plot: `scripts/make_figures.py` 
     },
     "VLM (image+features)": {
       "n": 1232,
-      "mae_log": 0.4611680833748515,
-      "rmse_log": 0.5602310623393092,
-      "mae_s": 18.602901136363638,
-      "rmse_s": 25.361231951685138,
-      "spearman_rho": 0.7325074799758706,
+      "mae_log": 0.4466073620755062,
+      "rmse_log": 0.537666868345124,
+      "mae_s": 18.205818344155844,
+      "rmse_s": 24.676509934262317,
+      "spearman_rho": 0.7482349204984011,
       "mean_actual_s": 48.14224951298701,
-      "mean_pred_s": 33.956574675324674
+      "mean_pred_s": 34.3086038961039
     },
     "VLM (image+features+task)": {
       "n": 1232,
-      "mae_log": 0.45185372769249804,
-      "rmse_log": 0.5544325224730909,
-      "mae_s": 18.41214431818182,
-      "rmse_s": 25.261022087771185,
-      "spearman_rho": 0.7169865814142506,
+      "mae_log": 0.44988262130787066,
+      "rmse_log": 0.5489458375748043,
+      "mae_s": 18.376694155844156,
+      "rmse_s": 25.073287465782247,
+      "spearman_rho": 0.7293923832716359,
       "mean_actual_s": 48.14224951298701,
-      "mean_pred_s": 35.09488636363636
+      "mean_pred_s": 35.09929301948052
     }
   },
   "parse_stats": {
@@ -326,12 +326,12 @@ ECE-style weighted gap: **2.00 s** (reliability plot: `scripts/make_figures.py` 
     "VLM (image+features+task)": {
       "n": 9129,
       "tier_counts": {
-        "strict": 9129,
+        "strict": 9128,
         "labeled": 0,
         "bare_number": 0,
-        "fail": 0
+        "fail": 1
       },
-      "parse_failure_rate": 0.0,
+      "parse_failure_rate": 0.00010954102311315588,
       "fallback": "TRAIN median winsorized dwell (4.729 s)",
       "clipped_to": [
         0.0,
@@ -339,7 +339,7 @@ ECE-style weighted gap: **2.00 s** (reliability plot: `scripts/make_figures.py` 
       ]
     }
   },
-  "calibration_ece_s": 2.002426311753751,
+  "calibration_ece_s": 1.9576021250958484,
   "primary_model": "VLM (image+features)",
   "pending_models": [],
   "rows": {

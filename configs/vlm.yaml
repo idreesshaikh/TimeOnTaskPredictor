@@ -20,7 +20,7 @@ paths:
 
 lupi:                               # privileged features → soft training target
   teacher_preds: artifacts/lupi_teacher_preds.parquet  # scripts/make_lupi_teacher.py
-  lambda: 0.5                       # single global soft-target weight: 0 = plain
+  lambda: 0.8                       # single global soft-target weight: 0 = plain
                                     # SFT on the true label, 1 = pure teacher;
                                     # blended in log1p space. THE distillation
                                     # hyperparameter — selected on VAL, never on

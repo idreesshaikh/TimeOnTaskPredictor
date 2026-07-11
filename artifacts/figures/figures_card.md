@@ -1,6 +1,6 @@
 # Figures card
 
-_Generated 2026-07-07T03:50:35+00:00 · config `configs/figures.yaml` · seed 42_
+_Generated 2026-07-11T05:28:45+00:00 · config `configs/figures.yaml` · seed 42_
 
 Regenerable anytime: `uv run python scripts/make_figures.py` (CPU-only, reads cached artifacts, never runs a model).
 

@@ -16,9 +16,13 @@
 #                                 if any λ is incomplete — then the final run
 #                                 never starts on a bad selection.
 #            │ afterok
-#   train.sbatch                  the winner λ only: both conditions on FULL
-#                                 data → TEST evaluated ONCE → figures →
-#                                 external zero-shot + AIM (~24–26 h)
+#   2 × train_condition.sbatch    the winner λ only, one GPU node per
+#                                 condition in parallel (~10–12 h each):
+#                                 image+features and image+features+task
+#            │ afterok (both)
+#   train.sbatch                  both conditions already trained → skips
+#                                 straight to TEST evaluated ONCE → figures →
+#                                 external zero-shot + AIM
 #
 # TEST discipline: only the selected λ is ever evaluated on TEST — testing
 # every λ would turn TEST into a second validation set (SPEC.md forbids it).
@@ -26,9 +30,10 @@
 # Rough timeline: each sweep job is ~3 h once it gets a GPU; how many run at
 # once depends on free cards (the pool accepts A100/H100/A30 across
 # gpu-batch/gpu-shortrun/aisc-batch, so jobs land wherever there is space).
-# Final full-data run ~24-26 h after the gate. Everything is idempotent — if
-# a sweep job timed out, resubmit just it, then rerun the gate + train (the
-# gate's log prints the exact commands).
+# The two final conditions run in parallel (~10-12 h each), then the eval
+# stage (~2-4 h) — roughly half the old sequential 24-26 h. Everything is
+# idempotent — if a sweep or condition job timed out, resubmit just it, then
+# rerun the jobs after it (the gate's log prints the exact commands).
 #
 # Escape hatch: extra sbatch flags for every GPU job (sweeps + final train;
 # the CPU gate is untouched) via TOT_SBATCH_ARGS, e.g. if aisc-batch rejects
@@ -59,14 +64,22 @@ GATE_ID=$(sbatch --parsable --dependency="afterany:$DEP" \
           scripts/finalize_select.sbatch "${GRID[@]}")
 echo "  gate  → job $GATE_ID   (picks λ on FULL val; runs after all sweeps end)"
 
-TRAIN_ID=$(sbatch --parsable ${TOT_SBATCH_ARGS:-} --dependency="afterok:$GATE_ID" scripts/train.sbatch)
-echo "  final → job $TRAIN_ID   (winner λ, both conditions, TEST once, figures, external)"
+COND_A=$(sbatch --parsable ${TOT_SBATCH_ARGS:-} --dependency="afterok:$GATE_ID" \
+         --job-name=cond-img scripts/train_condition.sbatch configs/vlm.yaml)
+COND_B=$(sbatch --parsable ${TOT_SBATCH_ARGS:-} --dependency="afterok:$GATE_ID" \
+         --job-name=cond-imgtask scripts/train_condition.sbatch configs/vlm_task.yaml)
+echo "  conds → jobs $COND_A + $COND_B   (winner λ, image+features ∥ image+features+task)"
+
+TRAIN_ID=$(sbatch --parsable ${TOT_SBATCH_ARGS:-} --dependency="afterok:$COND_A:$COND_B" scripts/train.sbatch)
+echo "  final → job $TRAIN_ID   (both conditions done → TEST once, figures, external)"
 
 echo
 echo "All queued. Check on it with:  squeue -u \$USER"
 echo "Gate log:   logs/totvlm-gate_${GATE_ID}.out (after the sweeps finish)"
 echo "Final log:  logs/train_${TRAIN_ID}.out"
 echo "Results land in artifacts/ — eval_report.md is the paper table."
-echo "If 'final' sits in DependencyNeverSatisfied, the gate failed — read its"
-echo "log; it names the λ jobs to resubmit and the two commands to rerun."
+echo "If a job sits in DependencyNeverSatisfied, its upstream failed — read that"
+echo "log. Gate failed: it names the λ jobs to resubmit and the commands to rerun."
+echo "A condition timed out: resubmit it (train_condition.sbatch <config>), then"
+echo "sbatch --dependency=afterok:<id> scripts/train.sbatch for the eval stage."
 squeue -u "$USER" 2>/dev/null || true

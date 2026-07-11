@@ -240,3 +240,8 @@ artifacts/vlm_task_ckpt*/
 
 .DS_Store
 
+# Local agent config (never publish)
+CLAUDE.md
+.claude/
+
+artifacts/sweeps/
