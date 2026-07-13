@@ -240,9 +240,5 @@ artifacts*/vlm_task_ckpt*/
 
 .DS_Store
 
-
-artifacts*/sweeps/vlm_lam*/
-artifacts/cnn_baseline*.pt
-
 # Local result archives from v1/v2 exploration (λ snapshots) — never push
 artifacts_lam*/
