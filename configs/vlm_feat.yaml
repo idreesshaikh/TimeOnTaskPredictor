@@ -1,0 +1,28 @@
+# Condition 3 of 4 — SCREENSHOT + UI FEATURES AS INPUT. The six
+# screen-describing axTree stats (knowable the moment the screen renders)
+# join the USER turn as a `ui:` line at train AND inference — the model is
+# GIVEN them instead of estimating them from pixels (the scaffold) or having
+# them shape the target (LUPI). Targets are the plain winsorized dwell:
+# `lupi: null` disables the teacher blend, `scaffold: false` the ui: output.
+# Upper-bound reading: what does per-screen dwell prediction gain when the
+# screen's structure is handed to the model outright? NOT screenshot-only at
+# inference, so this condition is excluded from zero-shot external validation
+# (VSGUI10K has no axTrees). The outcome features (nav flag, click area,
+# step index) remain hindsight-only and NEVER appear in any prompt.
+base: vlm.yaml
+
+paths:
+  output_dir: artifacts/vlm_feat_ckpt
+  train_card: artifacts/vlm_feat_train_card.md
+
+lupi: null                          # true labels only — no teacher blend
+
+data:
+  scaffold: false                   # ui: line moves from OUTPUT to INPUT
+  include_features: true            # ← the defining flag of this condition
+                                    # (stats file: data.scaffold_stats, which
+                                    # must cover train+val+test — see
+                                    # scripts/make_lupi_teacher.py)
+
+train:
+  run_name: qwen3vl4b-qlora-v3-feat

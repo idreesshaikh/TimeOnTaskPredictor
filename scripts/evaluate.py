@@ -1,5 +1,5 @@
 """TEST-split head-to-head: floors < {CNN pixels-only, LightGBM features-only}
-< VLM(screen) < VLM(screen+task),
+< VLM(screen) < VLM(screen+task) ≤? VLM(screen+features[, +task]),
 per screen AND per task (per-trajectory sums).
 
     uv run python scripts/evaluate.py [--config configs/eval.yaml]
@@ -30,6 +30,7 @@ from totvlm.config import load_config
 from totvlm.data import (
     PARSE_TIERS,
     build_vlm_examples,
+    merge_feature_stats,
     parse_dwell_output_lenient,
 )
 from totvlm.scoring import (
@@ -79,7 +80,7 @@ def adapters_available(ref: str) -> bool:
 
 
 def run_predict(
-    cfg: dict, vcfg: dict, rows: pd.DataFrame, winsor_cap: float, mcfg: dict
+    cfg: dict, rows: pd.DataFrame, winsor_cap: float, mcfg: dict
 ) -> None:
     import torch
 
@@ -99,6 +100,22 @@ def run_predict(
             f"run totvlm.train with its config first."
         )
 
+    # Prompt construction MUST match how this condition trained — read the
+    # flags from its own training config, never from a shared one.
+    vcfg = load_config(mcfg["config"])
+    features = bool(vcfg["data"].get("include_features"))
+    if features:
+        rows, cov = merge_feature_stats(rows, vcfg["data"]["scaffold_stats"])
+        if cov == 0.0:
+            sys.exit(
+                f"[{mcfg['name']}] feature-input condition but ZERO test "
+                f"rows have ui-stats — {vcfg['data']['scaffold_stats']} "
+                f"predates the train+val+test extension; rerun "
+                f"scripts/make_lupi_teacher.py."
+            )
+        log.info(f"[{mcfg['name']}] ui-stats coverage on eval rows: "
+                 f"{cov:.1%} (uncovered rows keep the image-only prompt)")
+
     log.info(f"[{mcfg['name']}] loading adapters from {adapters}")
     model, processor = load_vlm_for_inference(
         adapters,
@@ -112,8 +129,9 @@ def run_predict(
         max_side=img["max_side"],
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
-        include_task_title=mcfg["include_task_title"],
+        include_task_title=vcfg["data"]["include_task_title"],
         scaffold=bool(vcfg["data"].get("scaffold")),
+        features=features,
     )
     assert len(examples) == len(rows)
 
@@ -352,6 +370,32 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
     )
 
 
+def feature_input_paragraph(distilled: dict, feat: dict) -> str:
+    """The distillation-vs-input question: the screen-only condition had the
+    six ui-stats distilled into training but must estimate them from pixels
+    at inference; the feature-input condition is simply GIVEN them (and
+    trains on true labels, no teacher blend). Their gap bounds what perfect
+    screen-structure knowledge is worth at inference time."""
+    d_all = distilled["overall"]["mae_log"] - feat["overall"]["mae_log"]
+    d_in = distilled["in_page"]["mae_log"] - feat["in_page"]["mae_log"]
+    d_nav = distilled["navigation"]["mae_log"] - feat["navigation"]["mae_log"]
+    verdict = (
+        "handing the model the true screen structure beats distilling it — "
+        "the screenshot-only conditions leave recoverable structure signal "
+        "on the table."
+        if d_all > 0
+        else "being handed the true screen structure adds nothing over the "
+        "distilled screenshot-only condition — the pixels (plus train-time "
+        "distillation) already carry that information."
+    )
+    return (
+        f"Giving the six ui-stats as INPUT (vs distilling them into the "
+        f"screen-only condition) changes MAE(log) by **{d_all:+.4f} "
+        f"overall** ({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive "
+        f"= feature-input better). Read: {verdict}"
+    )
+
+
 def save_qualitative(
     rows: pd.DataFrame, n: int, banner_h: int, out_dir: Path, seed: int
 ) -> list[dict]:
@@ -529,6 +573,14 @@ def run_report(
                 head_metrics["VLM (screen+task, distilled)"],
             )
         )
+    if ("VLM (screen, distilled)" in head_metrics
+            and "VLM (screen+features)" in head_metrics):
+        paragraphs.append(
+            feature_input_paragraph(
+                head_metrics["VLM (screen, distilled)"],
+                head_metrics["VLM (screen+features)"],
+            )
+        )
 
     # Machine-readable outputs: the metrics JSON and the per-row prediction
     # matrix (head-to-head rows, one pred_log:<model> column per contestant)
@@ -684,7 +736,6 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    vcfg = load_config(cfg["vlm_config"])
     bcfg = load_config(cfg["baseline_config"])
     np.random.seed(cfg["seed"])
 
@@ -698,7 +749,7 @@ def main() -> None:
             if Path(mcfg["preds"]).exists():
                 log.info(f"[{mcfg['name']}] using cached predictions: {mcfg['preds']}")
             elif adapters_available(mcfg["adapters"]):
-                run_predict(cfg, vcfg, rows, winsor_cap_from_train(df), mcfg)
+                run_predict(cfg, rows, winsor_cap_from_train(df), mcfg)
             else:
                 log.info(
                     f"[{mcfg['name']}] no adapters yet at "

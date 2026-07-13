@@ -43,9 +43,13 @@ BASELINE = "#c3c2b7"  # axis lines / identity reference
 MODEL_COLORS = {  # the paper's ladder, one color per model everywhere
     "train-mean floor": "#c3c2b7",
     "train-median floor": "#898781",
+    "CNN (image only)": "#eda100",
     "LightGBM (no image)": "#1baf7a",
     "VLM (screen, distilled)": "#2a78d6",
     "VLM (screen+task, distilled)": "#4a3aa7",
+    # feature-input pair mirrors the distilled pair: "+task" darkens the hue
+    "VLM (screen+features)": "#c0398c",
+    "VLM (screen+features+task)": "#803254",
 }
 SPLIT_COLORS = {"train": "#2a78d6", "val": "#1baf7a", "test": "#eda100"}
 SUBSETS = ("overall", "navigation", "in_page")
@@ -153,8 +157,9 @@ def fig_head_to_head(metrics: dict, cfg: dict, dest: Path) -> Path:
     (higher better) on identical TEST rows."""
     per_screen = metrics["head_to_head_per_screen"]
     names = model_order(per_screen)
+    fig_h = 2 * (0.28 * len(names) + 1.0)  # rows stay readable as the ladder grows
     fig, axes = plt.subplots(
-        2, len(SUBSETS), figsize=(10.5, 4.6), dpi=cfg["style"]["dpi"], sharey="row"
+        2, len(SUBSETS), figsize=(10.5, fig_h), dpi=cfg["style"]["dpi"], sharey="row"
     )
     for j, subset in enumerate(SUBSETS):
         mae = [per_screen[n][subset]["mae_log"] for n in names]
@@ -165,8 +170,10 @@ def fig_head_to_head(metrics: dict, cfg: dict, dest: Path) -> Path:
         axes[0, j].set_title(f"{SUBSET_LABELS[subset]} (n={n_rows:,})", fontsize=9)
         axes[1, j].set_xlabel("Spearman ρ  (higher better)")
         if j:
-            axes[0, j].set_yticklabels([])
-            axes[1, j].set_yticklabels([])
+            # sharey: set_yticklabels([]) would clear the whole row's shared
+            # formatter (model names) — hide this axes' labels only
+            axes[0, j].tick_params(labelleft=False)
+            axes[1, j].tick_params(labelleft=False)
     axes[0, 0].set_xlabel("")
     fig.suptitle(
         "Per-screen head-to-head on identical held-out TEST rows — "
@@ -184,8 +191,9 @@ def fig_task_level(metrics: dict, cfg: dict, dest: Path) -> Path:
     task = metrics["task_level"]
     names = model_order(task)
     n_tasks = task[names[0]]["n"]
+    fig_h = 0.28 * len(names) + 1.4
     fig, axes = plt.subplots(
-        1, 2, figsize=(9.4, 2.9), dpi=cfg["style"]["dpi"], sharey=True
+        1, 2, figsize=(9.4, fig_h), dpi=cfg["style"]["dpi"], sharey=True
     )
     _bar_panel(axes[0], names, [task[n]["mae_log"] for n in names], ".3f")
     _bar_panel(
@@ -193,7 +201,7 @@ def fig_task_level(metrics: dict, cfg: dict, dest: Path) -> Path:
     )
     axes[0].set_xlabel("MAE(log)  (lower better)")
     axes[1].set_xlabel("Spearman ρ  (higher better)")
-    axes[1].set_yticklabels([])
+    axes[1].tick_params(labelleft=False)
     fig.suptitle(
         f"Task-level Time-on-Task (per-trajectory sums, n={n_tasks:,} tasks)",
         fontsize=10,
@@ -227,14 +235,18 @@ def _scatter_panels(
     names = list(pairs)
     lo = max(min(min(a.min(), p.min()) for a, p in pairs.values()) * 0.8, eps)
     hi = max(max(a.max(), p.max()) for a, p in pairs.values()) * 1.25
+    ncols = min(len(names), 3)  # wrap: 6 conditions side by side won't fit a page
+    nrows = -(-len(names) // ncols)
     fig, axes = plt.subplots(
-        1,
-        len(names),
-        figsize=(3.3 * len(names) + 0.4, 3.5),
+        nrows,
+        ncols,
+        figsize=(3.3 * ncols + 0.4, 3.5 * nrows),
         dpi=cfg["style"]["dpi"],
         sharey=True,
     )
-    axes = np.atleast_1d(axes)
+    axes = np.atleast_1d(axes).ravel()
+    for ax in axes[len(names):]:
+        ax.set_visible(False)
     for ax, name in zip(axes, names):
         actual, pred = pairs[name]
         rho = float(pd.Series(actual).corr(pd.Series(pred), method="spearman"))
@@ -258,9 +270,10 @@ def _scatter_panels(
         ax.set_title(f"{name}\nρ = {rho:.3f}", fontsize=9)
         ax.set_xlabel(f"actual {unit}")
         tidy(ax)
-    axes[0].set_ylabel(f"predicted {unit}")
+    for i in range(0, len(names), ncols):
+        axes[i].set_ylabel(f"predicted {unit}")
     fig.suptitle(title, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    fig.tight_layout(rect=(0, 0, 1, 0.96 - 0.06 / nrows))
     fig.savefig(dest)
     plt.close(fig)
     return dest

@@ -14,6 +14,7 @@ from PIL import Image
 import totvlm.data
 from totvlm.data import (
     SYSTEM_PROMPT,
+    SYSTEM_PROMPT_FEATURES,
     build_vlm_examples,
     format_dwell_target,
     parse_dwell_output,
@@ -119,3 +120,47 @@ def test_include_task_title_ablation(rows):
     user = ex["messages"][1]["content"]
     assert [c["type"] for c in user] == ["image", "text"]
     assert user[1]["text"] == "Task: Find a flight"
+
+
+# ── feature-input condition (configs/vlm_feat*.yaml) ─────────────────────────
+
+STAT_COLS = ("ax_n_nodes", "ax_n_interactive", "ax_n_links", "ax_n_buttons",
+             "ax_n_inputs", "ax_text_len")
+
+
+@pytest.fixture
+def feat_rows(rows):
+    """Row 0 has full ui-stats, row 1 is missing them (NaN) — the coverage
+    degradation the condition must survive."""
+    for i, c in enumerate(STAT_COLS):
+        rows[c] = [float(10 + i), None, None]
+    return rows
+
+
+def test_features_go_into_the_user_turn(feat_rows):
+    ex = build_vlm_examples(feat_rows, features=True, **BUILD_KW)[0]
+    msgs = ex["messages"]
+    assert msgs[0]["content"][0]["text"] == SYSTEM_PROMPT_FEATURES
+    user = msgs[1]["content"]
+    assert [c["type"] for c in user] == ["image", "text"]
+    assert user[1]["text"] == ("ui: nodes=10 interactive=11 links=12 "
+                               "buttons=13 inputs=14 text=15")
+    # target stays the plain dwell line — the ui: line is INPUT, not output
+    assert msgs[2]["content"][0]["text"] == "dwell_seconds: 7.7"
+
+
+def test_features_missing_stats_degrade_to_image_only_prompt(feat_rows):
+    ex = build_vlm_examples(feat_rows, features=True, **BUILD_KW)[1]
+    msgs = ex["messages"]
+    # same system prompt (condition-level), no ui: line for this row
+    assert msgs[0]["content"][0]["text"] == SYSTEM_PROMPT_FEATURES
+    assert [c["type"] for c in msgs[1]["content"]] == ["image"]
+
+
+def test_features_with_task_title_orders_ui_then_task(feat_rows):
+    ex = build_vlm_examples(
+        feat_rows, features=True, include_task_title=True, **BUILD_KW)[0]
+    user = ex["messages"][1]["content"]
+    assert [c["type"] for c in user] == ["image", "text", "text"]
+    assert user[1]["text"].startswith("ui: ")
+    assert user[2]["text"] == "Task: Find a flight"

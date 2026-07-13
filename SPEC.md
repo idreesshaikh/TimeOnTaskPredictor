@@ -7,11 +7,23 @@ Research question (v3): how accurately can per-screen — and, by aggregation,
 whole-task — Time-on-Task be predicted from rendered UI screens, and how much of
 that predictability resides in the screen alone versus the user's stated task?
 
-Two trained conditions, both SCREENSHOT-ONLY at inference:
+Two core conditions, both SCREENSHOT-ONLY at inference:
 - screen (configs/vlm.yaml — the science core)
 - screen+task-title (configs/vlm_task.yaml — the predictor)
 They are identical except the task-title prompt flag, so their gap = the
 goal-driven share of dwell.
+
+Two additional FEATURE-INPUT conditions (upper bound, NOT screenshot-only):
+- screen+features (configs/vlm_feat.yaml)
+- screen+features+task (configs/vlm_feat_task.yaml — overlay adding only
+  the task title, mirroring the core pair)
+Here the six screen-describing axTree stats are GIVEN in the user prompt as
+a `ui:` line — at train AND inference (legitimate: they are knowable the
+moment the screen renders). No distillation, no scaffold: `lupi: null`,
+plain winsorized labels. Reading: how much of the screenshot-only
+conditions' remaining error is missing screen-structure knowledge? Excluded
+from external validation (VSGUI10K has no axTrees). Outcome features stay
+hindsight-only and never enter any prompt.
 
 The metadata features are split by WHEN they are knowable, and each half
 reaches training through its own published mechanism — neither is ever a
@@ -33,9 +45,11 @@ Comparison ladder (all on identical TEST rows):
 floors (train mean/median) < CNN (pixels only, no distillation — what do
 generic visual features buy?) ≶ LightGBM (features only, no image — what does
 the metadata buy? doubles as the teacher's model family) < VLM (screen) <
-VLM (screen+task). configs/vlm.yaml is the base; configs/vlm_task.yaml is a
-thin `base: vlm.yaml` overlay that only adds the task title, so the
-"identical except one flag" claim holds in the files themselves.
+VLM (screen+task) ≤? VLM (screen+features[, +task]) (ui-stats given at
+inference — the upper-bound pair). configs/vlm.yaml is the base;
+configs/vlm_task.yaml is a thin `base: vlm.yaml` overlay that only adds the
+task title, so the "identical except one flag" claim holds in the files
+themselves (and vlm_feat_task.yaml repeats the pattern on vlm_feat.yaml).
 
 ## Non-negotiable rules
 - Reproducibility: global seed = 42 (Python, NumPy, torch, split assignment). Python 3.12.
@@ -111,7 +125,9 @@ Row construction:
 2b. `scripts/make_lupi_teacher.py` → lupi_teacher_preds.parquet (OOF LightGBM
    on the outcome features, folds grouped by registrable domain — the `lupi:`
    soft-target half) + scaffold_stats.parquet (the six screen-describing
-   axTree counts for train+val — the `ui:` supervision) + lupi_teacher_card.md
+   axTree counts for train+val+test — `ui:` target supervision on train+val,
+   prompt INPUT for the feature-input conditions on every split) +
+   lupi_teacher_card.md
 2c. `scripts/train_cnn_baseline.py` (GPU) → pixels-only ResNet-50 control:
    cnn_test_preds.parquet + cnn_baseline_report.md (TEST decoded once, inside
    the script, same discipline as the LightGBM baseline)
@@ -121,8 +137,11 @@ Row construction:
    winner adapters → the screen-only condition). TEST is never used to choose λ.
 3. `python -m totvlm.train --config configs/vlm_task.yaml` → the screen+task
    condition at the selected λ (GPU; auto-resumes; deploys best-by-val-loss)
-4. `scripts/evaluate.py` → TEST head-to-head (floors, CNN, LightGBM, both VLM
-   conditions), per-screen AND task-level (per-trajectory sums) +
+3b. `python -m totvlm.train --config configs/vlm_feat.yaml` then
+   `configs/vlm_feat_task.yaml` → the feature-input pair (GPU; independent
+   of λ selection — true labels, no blend)
+4. `scripts/evaluate.py` → TEST head-to-head (floors, CNN, LightGBM, all four
+   VLM conditions), per-screen AND task-level (per-trajectory sums) +
    eval_report.md + eval_metrics.json + eval_predictions.parquet
 5. `scripts/make_figures.py` → the paper figure set (artifacts/figures/),
    CPU-only, rebuilt from cached artifacts — never runs a model
@@ -133,8 +152,8 @@ Row construction:
 Cluster: two idempotent, resumable jobs (resubmit on timeout — they continue).
 `sbatch scripts/setup.sbatch` (CPU: download → dataset → baseline → teacher +
 scaffold stats → external prep), then `sbatch scripts/train.sbatch` (GPU: CNN
-baseline → λ grid → select+deploy → screen+task condition → eval + figures →
-external zero-shot + AIM).
+baseline → λ grid → select+deploy → screen+task condition → feature-input
+pair → eval + figures → external zero-shot + AIM).
 
 ## Verified test oracles (use as pytest ground truth)
 Trajectory id `yjeXPEBxd5EACsDz4xPWx` → 3 rows:

@@ -293,6 +293,17 @@ SYSTEM_PROMPT_SCAFFOLD = (
     "dwell_seconds: <number to 1 dp>"
 )
 
+# Feature-input condition: the same six screen-describing stats, but as part
+# of the USER turn — the model is GIVEN them (train AND inference) instead of
+# having to emit them. Legitimate because they are knowable the moment the
+# screen renders; the outcome features stay LUPI-only as ever. The line
+# reuses the scaffold's `ui:` format so both conditions share one vocabulary.
+SYSTEM_PROMPT_FEATURES = (
+    "You estimate how many seconds a user spends on this screen before their "
+    "next action. The screen's UI statistics may be provided alongside the "
+    "screenshot. Reply with exactly: dwell_seconds: <number to 1 dp>"
+)
+
 # Exactly what the model is trained to emit — anything else is a parse
 # failure. The dwell is always the LAST line, with or without the scaffold.
 DWELL_OUTPUT_RE = re.compile(r"^\s*dwell_seconds:\s*([0-9]+(?:\.[0-9]+)?)\s*$")
@@ -305,6 +316,15 @@ def format_dwell_target(dwell_s: float, winsor_cap: float) -> str:
     return f"dwell_seconds: {min(max(dwell_s, 0.0), winsor_cap):.1f}"
 
 
+def format_ui_line(stats: dict) -> str:
+    """`ui: nodes=... interactive=... ...` — the one shared rendering of the
+    six screen-describing stats (scaffold TARGET line and feature-input USER
+    line alike)."""
+    return "ui: " + " ".join(
+        f"{name}={int(stats[col])}" for name, col in SCAFFOLD_FIELDS
+    )
+
+
 def format_scaffold_target(
     stats: dict | None, dwell_s: float, winsor_cap: float
 ) -> str:
@@ -314,8 +334,24 @@ def format_scaffold_target(
     dwell_line = format_dwell_target(dwell_s, winsor_cap)
     if stats is None:
         return dwell_line
-    ui = " ".join(f"{name}={int(stats[col])}" for name, col in SCAFFOLD_FIELDS)
-    return f"ui: {ui}\n{dwell_line}"
+    return f"{format_ui_line(stats)}\n{dwell_line}"
+
+
+def merge_feature_stats(
+    df: pd.DataFrame, stats_path: str | Path
+) -> tuple[pd.DataFrame, float]:
+    """Left-merge the six screen-describing axTree stats onto `df` by
+    ROW_KEY. Returns (frame with the stat columns, coverage fraction) —
+    callers report the coverage; rows without stats degrade to the plain
+    prompt/target, never crash."""
+    stats = pd.read_parquet(stats_path)
+    stat_cols = [col for _, col in SCAFFOLD_FIELDS]
+    merged = df.merge(
+        stats[ROW_KEY + stat_cols], on=ROW_KEY, how="left", validate="1:1"
+    )
+    coverage = float(merged[stat_cols].notna().all(axis=1).mean()) \
+        if len(merged) else 0.0
+    return merged, coverage
 
 
 def parse_dwell_output(text: str | None) -> float | None:
@@ -359,12 +395,24 @@ def _vlm_messages(
     target_text: str,
     include_task_title: bool,
     scaffold: bool = False,
+    features: bool = False,
+    feature_text: str | None = None,
 ) -> list[dict]:
-    """One chat example in the format UnslothVisionDataCollator expects."""
+    """One chat example in the format UnslothVisionDataCollator expects.
+    `features` picks the condition's system prompt; `feature_text` is that
+    row's `ui:` line (None where the stats are missing — the row keeps the
+    same system prompt, so the condition's prompt never varies per row)."""
     user_content: list[dict] = [{"type": "image", "image": image}]
+    if features and feature_text:
+        user_content.append({"type": "text", "text": feature_text})
     if include_task_title and task_title:
         user_content.append({"type": "text", "text": f"Task: {task_title}"})
-    system = SYSTEM_PROMPT_SCAFFOLD if scaffold else SYSTEM_PROMPT
+    if scaffold:
+        system = SYSTEM_PROMPT_SCAFFOLD
+    elif features:
+        system = SYSTEM_PROMPT_FEATURES
+    else:
+        system = SYSTEM_PROMPT
     return [
         {"role": "system",
          "content": [{"type": "text", "text": system}]},
@@ -384,13 +432,14 @@ class VlmExamples(Sequence):
 
     def __init__(self, records: list[dict], *, max_side: int,
                  min_pixels: int, max_pixels: int, include_task_title: bool,
-                 scaffold: bool = False):
+                 scaffold: bool = False, features: bool = False):
         self._records = records
         self._max_side = max_side
         self._min_pixels = min_pixels
         self._max_pixels = max_pixels
         self._include_task_title = include_task_title
         self._scaffold = scaffold
+        self._features = features
 
     def __len__(self) -> int:
         return len(self._records)
@@ -413,6 +462,8 @@ class VlmExamples(Sequence):
                 r["target_text"],
                 self._include_task_title,
                 scaffold=self._scaffold,
+                features=self._features,
+                feature_text=r.get("feature_text"),
             ),
             "dwell_s": r["dwell_s"],
             "is_navigation": r["is_navigation"],
@@ -428,6 +479,7 @@ def build_vlm_examples(
     max_pixels: int,
     include_task_title: bool = False,
     scaffold: bool = False,
+    features: bool = False,
 ) -> VlmExamples:
     """img_resolved rows → lazy chat examples (VlmExamples: images load on
     access, never all at once; plain dicts, not datasets.map — avoids Arrow
@@ -436,30 +488,38 @@ def build_vlm_examples(
 
     `scaffold=True` (v3): the target gains a `ui: ...` stats line supervised
     from the axTree feature columns (merged onto df by totvlm.train); rows
-    missing those stats keep the dwell-only target."""
+    missing those stats keep the dwell-only target.
+
+    `features=True`: the same `ui: ...` line goes into the USER turn instead
+    (merge_feature_stats supplies the columns) — the model is GIVEN the stats
+    at train and inference; rows missing them keep the image-only prompt."""
     rows = df[df["img_resolved"] & df["img_path"].notna()]
     # LUPI: totvlm.lupi.blend_lupi_targets adds `target_s` (the soft training
     # target); `dwell_s` stays the true label for the decode hook / evaluation.
     blended = "target_s" in rows.columns
     stat_cols = [col for _, col in SCAFFOLD_FIELDS]
-    has_stats = scaffold and all(c in rows.columns for c in stat_cols)
+    has_stats = all(c in rows.columns for c in stat_cols)
+
+    def _stats(r) -> dict | None:
+        if not has_stats:
+            return None
+        stats = {c: getattr(r, c) for c in stat_cols}
+        return None if any(pd.isna(v) for v in stats.values()) else stats
 
     def _target(r) -> str:
         dwell = float(r.target_s if blended else r.dwell_s)
         if not scaffold:
             return format_dwell_target(dwell, winsor_cap)
-        stats = (
-            {c: getattr(r, c) for c in stat_cols} if has_stats else None
-        )
-        if stats and any(pd.isna(v) for v in stats.values()):
-            stats = None
-        return format_scaffold_target(stats, dwell, winsor_cap)
+        return format_scaffold_target(_stats(r), dwell, winsor_cap)
 
     records = [
         {
             "img_path": r.img_path,
             "task_title": getattr(r, "task_title", None),
             "target_text": _target(r),
+            "feature_text": (
+                format_ui_line(s) if features and (s := _stats(r)) else None
+            ),
             "dwell_s": float(r.dwell_s),
             "is_navigation": bool(r.is_navigation),
         }
@@ -472,6 +532,7 @@ def build_vlm_examples(
         max_pixels=max_pixels,
         include_task_title=include_task_title,
         scaffold=scaffold,
+        features=features,
     )
 
 

@@ -29,6 +29,7 @@ from totvlm.config import load_config
 from totvlm.data import (
     PARSE_TIERS,
     build_vlm_examples,
+    merge_feature_stats,
     parse_dwell_output_lenient,
 )
 from totvlm.model import load_vlm_for_inference, predict_dwell_batch
@@ -65,6 +66,11 @@ def main() -> None:
     train_median_s = float(train["dwell_s"].median())
 
     val = df[df["split"] == "val"]
+    features = bool(cfg["data"].get("include_features"))
+    if features:
+        val, cov = merge_feature_stats(val, cfg["data"]["scaffold_stats"])
+        print(f"feature-input condition: ui-stats coverage {cov:.1%}",
+              flush=True)
     img = cfg["image"]
     examples = build_vlm_examples(
         val,
@@ -74,6 +80,7 @@ def main() -> None:
         max_pixels=img["max_pixels"],
         include_task_title=cfg["data"]["include_task_title"],
         scaffold=bool(cfg["data"].get("scaffold")),
+        features=features,
     )
     # gold labels in the same row order build_vlm_examples uses (same mask,
     # same iteration order) — avoids loading every image twice
@@ -110,7 +117,7 @@ def main() -> None:
         "generated": datetime.now(UTC).isoformat(timespec="seconds"),
         "config": args.config,
         "checkpoint": checkpoint,
-        "lambda": cfg.get("lupi", {}).get("lambda"),
+        "lambda": (cfg.get("lupi") or {}).get("lambda"),
         "n_val": len(examples),
         "tier_counts": tier_counts,
         "parse_failure_rate": tier_counts["fail"] / max(len(tiers), 1),

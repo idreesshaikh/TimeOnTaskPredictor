@@ -2,9 +2,8 @@
 # (features only) vs floors, per screen AND per task.
 seed: 42
 
-# image/prompt knobs MUST match training; axtree knobs MUST match the
-# baseline run — read from the configs that produced those models
-vlm_config: configs/vlm.yaml
+# axtree knobs MUST match the baseline run; each VLM condition's image/prompt
+# knobs come from its own `config:` (the config it was trained with)
 baseline_config: configs/baseline.yaml
 
 paths:
@@ -17,19 +16,29 @@ paths:
   predictions_parquet: artifacts/eval_predictions.parquet  # make_figures input
 
 # One entry per trained condition; caches are filled if missing, missing
-# conditions are listed as pending, never silently skipped. Both conditions
-# train with the metadata distilled in (lupi blend + ui scaffold — see
-# configs/vlm.yaml); inference input is the screenshot (+ task title for the
-# second). Their gap = the goal-driven share.
+# conditions are listed as pending, never silently skipped. Prompt flags
+# (task title, scaffold, feature input) are read from each condition's own
+# training config so evaluation can never drift from training. Conditions
+# 1–2 are screenshot-only at inference (metadata distilled in at train time);
+# conditions 3–4 are GIVEN the six screen-describing ui-stats in the prompt
+# (upper bound — no distillation, true labels).
 vlm_models:
   - name: "VLM (screen, distilled)"        # screenshot in; features shape training only
+    config: configs/vlm.yaml
     adapters: artifacts/vlm_ckpt/final
     preds: artifacts/vlm_test_preds.parquet
-    include_task_title: false
   - name: "VLM (screen+task, distilled)"   # + the task title in the prompt
+    config: configs/vlm_task.yaml
     adapters: artifacts/vlm_task_ckpt/final
     preds: artifacts/vlm_task_test_preds.parquet
-    include_task_title: true
+  - name: "VLM (screen+features)"          # ui-stats GIVEN in the prompt
+    config: configs/vlm_feat.yaml
+    adapters: artifacts/vlm_feat_ckpt/final
+    preds: artifacts/vlm_feat_test_preds.parquet
+  - name: "VLM (screen+features+task)"     # + the task title on top
+    config: configs/vlm_feat_task.yaml
+    adapters: artifacts/vlm_feat_task_ckpt/final
+    preds: artifacts/vlm_feat_task_test_preds.parquet
 
 predict:                    # GPU stage
   batch_size: 8

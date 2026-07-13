@@ -123,6 +123,7 @@ def main() -> None:
         tcfg["epochs"] = d["epochs"]
         tcfg["batch_size"] = d["batch_size"]
         tcfg["num_workers"] = d["num_workers"]
+        tcfg["report_to"] = d["report_to"]
         report_path = report_path.with_name(
             report_path.stem + "-dryrun" + report_path.suffix)
         model_out = model_out.with_name(model_out.stem + "-dryrun.pt")
@@ -131,6 +132,13 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda" and not args.dry_run:
         sys.exit("full CNN training needs a CUDA GPU — use --dry-run on CPU")
+
+    wandb = None
+    if tcfg["report_to"] == "wandb":
+        import wandb
+
+        wandb.init(project=tcfg["wandb_project"], name=tcfg["run_name"],
+                   config=cfg)
 
     df = pd.read_parquet(cfg["paths"]["rows_final"])
     size = cfg["image"]["size"]
@@ -168,6 +176,7 @@ def main() -> None:
     best = {"epoch": -1, "val_mae_log": float("inf"), "state": None}
     history = []
     epochs_no_improve = 0
+    global_step = 0
     for epoch in range(tcfg["epochs"]):
         model.train()
         running, n_seen = 0.0, 0
@@ -179,6 +188,10 @@ def main() -> None:
             opt.step()
             running += float(loss.detach()) * len(y)
             n_seen += len(y)
+            global_step += 1
+            if wandb and global_step % tcfg["logging_steps"] == 0:
+                wandb.log({"train/loss": float(loss.detach()),
+                           "epoch": epoch}, step=global_step)
         val_pred = predict(model, val_dl, device)
         val_mae = float(np.mean(np.abs(val_pred - val_rows["y"].to_numpy())))
         history.append({"epoch": epoch,
@@ -186,6 +199,10 @@ def main() -> None:
                         "val_mae_log": round(val_mae, 4)})
         log.info(f"epoch {epoch}: train {history[-1]['train_loss']} · "
                  f"val MAE(log) {val_mae:.4f}")
+        if wandb:
+            wandb.log({"train/epoch_loss": history[-1]["train_loss"],
+                       "val/mae_log": val_mae, "epoch": epoch},
+                      step=global_step)
         if val_mae < best["val_mae_log"]:
             best = {"epoch": epoch, "val_mae_log": val_mae,
                     "state": {k: v.detach().cpu().clone()
@@ -217,6 +234,14 @@ def main() -> None:
         test_pred,
         test_rows["is_navigation"].to_numpy(),
     )
+    if wandb:
+        wandb.summary["best_epoch"] = best["epoch"]
+        wandb.summary["best_val_mae_log"] = best["val_mae_log"]
+        for name, m in test_metrics.items():
+            if m.get("n"):
+                for k in ("n", "mae_log", "mae_s", "spearman_rho"):
+                    wandb.summary[f"test/{name}/{k}"] = m[k]
+        wandb.finish()
 
     lines = [
         "# Pixels-only CNN baseline report",

@@ -39,9 +39,8 @@ from trl import SFTConfig, SFTTrainer
 
 from totvlm.config import load_config
 from totvlm.data import (
-    ROW_KEY,
-    SCAFFOLD_FIELDS,
     build_vlm_examples,
+    merge_feature_stats,
     parse_dwell_output,
 )
 from totvlm.lupi import blend_lupi_targets
@@ -204,7 +203,14 @@ def _write_train_card(
             f" {scaffold_stats['coverage_train']:.1%} · val"
             f" {scaffold_stats['coverage_val']:.1%}; at inference the model"
             f" generates its own estimates (input stays image-only)"
-        ] if scaffold_stats else []),
+        ] if scaffold_stats and scaffold_stats["mode"] == "target" else []),
+        *([
+            f"- Feature input: the six screen-describing axTree stats join"
+            f" the USER turn as a `ui:` line (train AND inference) — coverage"
+            f" train {scaffold_stats['coverage_train']:.1%} · val"
+            f" {scaffold_stats['coverage_val']:.1%}; NOT screenshot-only at"
+            f" inference, no target blending"
+        ] if scaffold_stats and scaffold_stats["mode"] == "input" else []),
         f"- Examples: train **{n_train}** · val **{n_val}** (img_resolved only)",
         "",
         "## Memory footprint",
@@ -330,6 +336,11 @@ def main() -> None:
 
     img = cfg["image"]
     scaffold = bool(cfg["data"].get("scaffold"))
+    features = bool(cfg["data"].get("include_features"))
+    if scaffold and features:
+        sys.exit("data.scaffold and data.include_features are mutually "
+                 "exclusive — the ui: line is either the model's OUTPUT "
+                 "(scaffold) or its INPUT (features), never both.")
     build = lambda part: build_vlm_examples(  # noqa: E731
         part,
         winsor_cap=winsor_cap,
@@ -338,14 +349,17 @@ def main() -> None:
         max_pixels=img["max_pixels"],
         include_task_title=cfg["data"]["include_task_title"],
         scaffold=scaffold,
+        features=features,
     )
     print("1/4  Building chat examples ...", flush=True)
     train_part = _load_split(df, "train", n_train_limit, seed)
     val_part = _load_split(df, "val", n_val_limit, seed)
     # LUPI condition: blend the TRAIN targets toward the privileged-feature
     # teacher's out-of-fold prediction. Val targets are never blended.
+    # (`lupi: null` in an overlay disables the blend — the feature-input
+    # conditions train on the true winsorized labels.)
     lupi_stats = None
-    if "lupi" in cfg:
+    if cfg.get("lupi"):
         teacher = pd.read_parquet(cfg["lupi"]["teacher_preds"])
         train_part, lupi_stats = blend_lupi_targets(
             train_part, teacher, float(cfg["lupi"]["lambda"])
@@ -354,28 +368,24 @@ def main() -> None:
               f"/{lupi_stats['n_rows']} train targets "
               f"(λ={lupi_stats['lambda']}, mean |shift| "
               f"{lupi_stats['mean_abs_shift_s']} s)", flush=True)
-    # Scaffold condition (v3): merge the real axTree stats so the target's
-    # `ui:` line is supervised on train AND val (val loss covers the full
-    # two-line format). Rows without stats keep the dwell-only target.
+    # Both stats-consuming modes merge the same six axTree counts. Scaffold
+    # (v3): they supervise the target's `ui:` line on train AND val. Feature
+    # input: they join the USER turn — the model is GIVEN them, train and
+    # inference alike. Rows without stats keep the plain target/prompt.
     scaffold_stats = None
-    if scaffold:
-        stats = pd.read_parquet(cfg["data"]["scaffold_stats"])
-        stat_cols = [col for _, col in SCAFFOLD_FIELDS]
-        train_part = train_part.merge(
-            stats[ROW_KEY + stat_cols], on=ROW_KEY, how="left", validate="1:1"
-        )
-        val_part = val_part.merge(
-            stats[ROW_KEY + stat_cols], on=ROW_KEY, how="left", validate="1:1"
-        )
-        cov_tr = float(train_part[stat_cols].notna().all(axis=1).mean())
-        cov_va = float(val_part[stat_cols].notna().all(axis=1).mean())
+    if scaffold or features:
+        train_part, cov_tr = merge_feature_stats(
+            train_part, cfg["data"]["scaffold_stats"])
+        val_part, cov_va = merge_feature_stats(
+            val_part, cfg["data"]["scaffold_stats"])
         scaffold_stats = {
+            "mode": "input" if features else "target",
             "coverage_train": round(cov_tr, 4),
             "coverage_val": round(cov_va, 4),
         }
-        print(f"     scaffold: ui-stats coverage train {cov_tr:.1%} · "
-              f"val {cov_va:.1%} (uncovered rows keep the dwell-only "
-              f"target)", flush=True)
+        print(f"     ui-stats ({scaffold_stats['mode']}): coverage train "
+              f"{cov_tr:.1%} · val {cov_va:.1%} (uncovered rows keep the "
+              f"plain {'prompt' if features else 'target'})", flush=True)
     train_ds = build(train_part)
     val_ds = build(val_part)
     print(f"     train {len(train_ds)} · val {len(val_ds)} "

@@ -1,0 +1,15 @@
+# Condition 4 of 4 — SCREENSHOT + UI FEATURES + TASK TITLE. Thin overlay on
+# the feature-input condition (configs/vlm_feat.yaml) that only adds the task
+# title to the prompt — mirroring how vlm_task.yaml overlays vlm.yaml, so the
+# feat vs feat+task gap is again a clean measure of the goal-driven share.
+base: vlm_feat.yaml
+
+paths:
+  output_dir: artifacts/vlm_feat_task_ckpt
+  train_card: artifacts/vlm_feat_task_train_card.md
+
+data:
+  include_task_title: true          # ← the ONLY difference vs vlm_feat.yaml
+
+train:
+  run_name: qwen3vl4b-qlora-v3-feat-task

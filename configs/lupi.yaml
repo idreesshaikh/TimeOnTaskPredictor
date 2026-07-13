@@ -6,8 +6,10 @@
 # never touched by the teacher.
 #
 # v3: the same stage also writes scaffold_stats.parquet — the six
-# SCREEN-DESCRIBING axTree counts for train+val rows, which supervise the
-# `ui:` line of the training target (never a model input).
+# SCREEN-DESCRIBING axTree counts for train+val+test rows: on train+val they
+# supervise the `ui:` line of the training target; on all splits they are
+# the prompt INPUT of the feature-input conditions (configs/vlm_feat*.yaml).
+# The teacher itself still fits on TRAIN rows only.
 seed: 42
 
 # LightGBM params + axTree fetch knobs come from the baseline config so the

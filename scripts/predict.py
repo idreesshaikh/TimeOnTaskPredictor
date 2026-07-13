@@ -50,6 +50,13 @@ def main() -> None:
         args.config
         or ("configs/vlm_task.yaml" if args.task else "configs/vlm.yaml")
     )
+    if cfg["data"].get("include_features"):
+        raise SystemExit(
+            "feature-input conditions (configs/vlm_feat*.yaml) need the "
+            "screen's axTree ui-stats in the prompt — arbitrary screenshots "
+            "have none, so predict.py cannot serve them; use a "
+            "screenshot-only condition's config."
+        )
     checkpoint = args.checkpoint or f"{cfg['paths']['output_dir']}/final"
     if not args.checkpoint and not Path(checkpoint).exists():
         raise SystemExit(

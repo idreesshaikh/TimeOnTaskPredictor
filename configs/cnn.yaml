@@ -29,6 +29,10 @@ train:
   num_workers: 8
   patience: 2               # early stop on val MAE(log); best epoch deploys
   loss: l1                  # matches the MAE(log) headline metric
+  logging_steps: 50         # train-loss points every N batches (wandb)
+  report_to: wandb          # "none" disables; curves land next to the VLM runs
+  wandb_project: tot-vlm
+  run_name: cnn-resnet50-v3
 
 dry_run:                    # --dry-run: tiny CPU-able smoke test
   n_train: 64
@@ -36,3 +40,4 @@ dry_run:                    # --dry-run: tiny CPU-able smoke test
   epochs: 1
   batch_size: 8
   num_workers: 0
+  report_to: none
