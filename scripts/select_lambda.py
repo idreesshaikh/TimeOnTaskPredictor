@@ -1,14 +1,16 @@
-"""Pick the distillation weight λ from the sweep — on VALIDATION only.
+"""Pick the distillation weight λ from the fixed grid — on VALIDATION only.
 
     uv run python scripts/select_lambda.py [artifacts/sweeps/*_card.md]
 
-Each sweep overlay (configs/sweeps/lam*.yaml) trains the image+features model
-with one global λ and writes a train card. This reads those cards, and for each
-reports the BEST validation decode MAE(log) over the run's eval passes — i.e.
-the metric the deployed (best) checkpoint achieves. It ranks the λ values and
-names the winner. With --write it also patches `lupi.lambda` in configs/vlm.yaml
-to that winner (comments preserved), so the final two-condition run needs no
-manual edit; vlm_task.yaml inherits the value via `base: vlm.yaml`.
+Each grid overlay (configs/sweeps/lam{000,025,050,075,100}.yaml) trains the
+screen-only condition at FULL fidelity with one global λ and writes a train
+card; scripts/decode_val.py then scores its deployed checkpoint on the FULL
+val split. This ranks the λ values by that full-val MAE(log) and names the
+winner. With --write it patches `lupi.lambda` in configs/vlm.yaml (comments
+preserved) — vlm_task.yaml inherits the value via `base: vlm.yaml`. With
+--deploy it also copies the winning run's `final/` adapters to the target
+config's output_dir, so the winner IS the screen-only condition (grid runs
+are full fidelity — retraining it would be a pointless 6th run).
 
 This never opens a prediction cache or the TEST split: selection is a pure
 VAL-set decision, so the evaluate-once discipline for TEST stays intact."""
@@ -93,11 +95,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cards", nargs="*",
                     default=sorted(glob.glob("artifacts/sweeps/*_card.md")),
-                    help="sweep train cards (default: artifacts/sweeps/*_card.md)")
+                    help="grid train cards (default: artifacts/sweeps/*_card.md)")
     ap.add_argument("--write", action="store_true",
                     help="patch lupi.lambda in --target to the winner")
     ap.add_argument("--target", default="configs/vlm.yaml",
                     help="config to patch with --write (default: configs/vlm.yaml)")
+    ap.add_argument("--deploy", action="store_true",
+                    help="copy the winning run's final/ adapters to the "
+                         "--target config's output_dir (winner becomes the "
+                         "screen-only condition)")
     args = ap.parse_args()
     if not args.cards:
         sys.exit("no sweep cards found — train configs/sweeps/lam*.yaml first")
@@ -129,8 +135,26 @@ def main() -> None:
     if args.write:
         write_lambda(args.target, winner)
         print(f"\nSelected on VALIDATION: lupi.lambda = {winner} "
-              f"(written to {args.target}). Now run the final two conditions.")
-    else:
+              f"(written to {args.target}).")
+    if args.deploy:
+        if noisy:
+            sys.exit("REFUSING --deploy on a noisy ranking (see above).")
+        import shutil
+
+        import yaml
+        src = Path(rows[0]["card"][: -len("_card.md")]) / "final"
+        if not src.is_dir():
+            sys.exit(f"winner has no deployed adapters at {src} — did the "
+                     f"run finish?")
+        dst = Path(yaml.safe_load(open(args.target))
+                   .get("paths", {}).get("output_dir",
+                                         "artifacts/vlm_ckpt")) / "final"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        print(f"deployed winner adapters: {src} → {dst}")
+    if not args.write:
         print(f"\nSelected on VALIDATION: set  lupi.lambda: {winner}  "
               f"in configs/vlm.yaml (or re-run with --write), then run the "
               f"final two conditions.")

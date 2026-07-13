@@ -9,7 +9,14 @@ only), and calls totvlm.lupi.oof_teacher_predictions to score them out of
 fold. Those predictions become the soft half of BOTH trained conditions'
 target; the blend happens in totvlm.train via `lupi.lambda` (configs/vlm.yaml).
 The leak discipline (domain-grouped folds, val/test never touched) lives in
-totvlm.lupi. Writes lupi_teacher_preds.parquet + the teacher card."""
+totvlm.lupi. Writes lupi_teacher_preds.parquet + the teacher card.
+
+v3: also writes scaffold_stats.parquet — the six SCREEN-DESCRIBING axTree
+stats for TRAIN + VAL rows. Those supervise the `ui:` scaffold line of the
+training target (totvlm.data.format_scaffold_target); the outcome features
+(nav flag, click area, step index) never appear there — they reach training
+only through the teacher blend. TEST/external stats are never extracted:
+at inference the model generates its own estimates from the screenshot."""
 from __future__ import annotations
 
 import argparse
@@ -26,6 +33,7 @@ import pandas as pd
 from totvlm.config import load_config
 from totvlm.data import ROW_KEY
 from totvlm.features import (
+    AXTREE_FEATURE_NAMES,
     build_feature_frame,
     feature_columns,
     fetch_axtree_features,
@@ -59,18 +67,20 @@ def main() -> None:
     k = cfg["teacher"]["k_folds"]
 
     # Teacher preds are needed exactly where the VLM trains: TRAIN rows with
-    # a resolved screenshot. Rows without an axTree URL cannot be covered —
-    # they keep the true label downstream, and the coverage is reported.
+    # a resolved screenshot. Scaffold stats are additionally needed on VAL
+    # (the `ui:` line of the val targets). Rows without an axTree URL cannot
+    # be covered — they keep the plain label downstream; coverage is reported.
     df = pd.read_parquet(cfg["paths"]["rows_final"])
-    vlm_train = df[(df["split"] == "train") & df["img_resolved"]]
-    has_ax = vlm_train["axtree_ref"].notna() & (vlm_train["axtree_ref"] != "")
-    rows = vlm_train[has_ax].sort_values(ROW_KEY, kind="mergesort")
+    vlm_rows = df[df["split"].isin(["train", "val"]) & df["img_resolved"]]
+    vlm_train = vlm_rows[vlm_rows["split"] == "train"]
+    has_ax = vlm_rows["axtree_ref"].notna() & (vlm_rows["axtree_ref"] != "")
+    rows = vlm_rows[has_ax].sort_values(ROW_KEY, kind="mergesort")
     n_no_axtree = int((~has_ax).sum())
     if args.limit is not None:
         rows = rows.head(args.limit)
     log.info(
-        f"{len(vlm_train)} VLM train rows → {len(rows)} with an axTree URL "
-        f"({n_no_axtree} uncoverable)"
+        f"{len(vlm_rows)} VLM train+val rows → {len(rows)} with an axTree "
+        f"URL ({n_no_axtree} uncoverable)"
         + (f" · LIMIT {args.limit}" if args.limit else "")
     )
 
@@ -82,11 +92,25 @@ def main() -> None:
         max_depth=fcfg["max_tree_depth"],
     )
     vocab = list(fcfg["action_vocab"])
-    frame = build_feature_frame(rows, feats, vocab)
-    n_fetch_failed = int((~frame["ax_resolved"]).sum())
-    frame = frame[frame["ax_resolved"]]
-    log.info(f"axTree resolved for {len(frame)} rows "
+    all_frame = build_feature_frame(rows, feats, vocab)
+    n_fetch_failed = int((~all_frame["ax_resolved"]).sum())
+    all_frame = all_frame[all_frame["ax_resolved"]]
+    log.info(f"axTree resolved for {len(all_frame)} rows "
              f"({n_fetch_failed} fetch/parse failures excluded)")
+
+    # Scaffold stats (v3): screen-describing axTree counts for train+val —
+    # these supervise the target's `ui:` line, never the model's input.
+    scaffold = all_frame[
+        ROW_KEY + list(AXTREE_FEATURE_NAMES)
+    ].reset_index(drop=True)
+    scaffold_dest = Path(cfg["paths"]["scaffold_stats"])
+    scaffold_dest.parent.mkdir(parents=True, exist_ok=True)
+    scaffold.to_parquet(scaffold_dest, compression="zstd", index=False)
+    log.info(f"scaffold stats ({len(scaffold)} train+val rows) → "
+             f"{scaffold_dest}")
+
+    # The teacher itself is fit on TRAIN rows only.
+    frame = all_frame[all_frame["split"] == "train"]
     if frame.empty:
         raise SystemExit("no rows with resolved axTree features — nothing "
                          "for the teacher to learn from")
@@ -117,7 +141,7 @@ def main() -> None:
         "oof_metrics": oof_metrics,
         "rows": {
             "vlm_train": len(vlm_train),
-            "with_axtree_url": len(rows),
+            "train_val_with_axtree_url": len(rows),
             "covered": len(out),
             "coverage_of_vlm_train": round(coverage, 4),
         },
@@ -125,6 +149,7 @@ def main() -> None:
             "no_axtree_url": n_no_axtree,
             "axtree_fetch_failed": n_fetch_failed,
         },
+        "scaffold_stats_rows": len(scaffold),
         "limit": args.limit,
     }
     lines = [
@@ -143,7 +168,10 @@ def main() -> None:
         f"- Coverage: **{len(out)}** of {len(vlm_train)} VLM train rows "
         f"(**{coverage:.1%}**) — uncovered rows keep the true label",
         f"- Excluded: {n_no_axtree} without an axTree URL · "
-        f"{n_fetch_failed} fetch/parse failures",
+        f"{n_fetch_failed} fetch/parse failures (train+val)",
+        f"- Scaffold stats (v3): **{len(scaffold)}** train+val rows → "
+        f"`{cfg['paths']['scaffold_stats']}` — the six screen-describing "
+        f"axTree counts that supervise the target's `ui:` line",
         *([f"- ⚠️ `--limit {args.limit}` was set — smoke run, not the full "
            f"teacher"] if args.limit else []),
         "",

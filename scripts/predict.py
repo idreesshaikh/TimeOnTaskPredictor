@@ -71,6 +71,7 @@ def main() -> None:
         min_pixels=cfg["image"]["min_pixels"],
         max_pixels=cfg["image"]["max_pixels"],
         task_title=args.task,
+        scaffold=bool(cfg["data"].get("scaffold")),
     )
     outputs = predict_dwell_batch(
         model, processor, examples,

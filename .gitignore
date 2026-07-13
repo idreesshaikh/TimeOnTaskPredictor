@@ -229,19 +229,20 @@ data/
 webchain_raw/
 webchain_dataset/
 checkpoints/
-artifacts/vlm_ckpt*/
+artifacts*/vlm_ckpt*/
 wandb/
 logs/
 
 # Extra
 /docs/
 src/Time_On_Task_Predictor.egg-info
-artifacts/vlm_task_ckpt*/
+artifacts*/vlm_task_ckpt*/
 
 .DS_Store
 
-# Local agent config (never publish)
-CLAUDE.md
-.claude/
 
-artifacts/sweeps/
+artifacts*/sweeps/vlm_lam*/
+artifacts/cnn_baseline*.pt
+
+# Local result archives from v1/v2 exploration (λ snapshots) — never push
+artifacts_lam*/

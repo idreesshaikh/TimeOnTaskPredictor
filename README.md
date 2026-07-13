@@ -13,36 +13,46 @@ corpus, with a zero-shot external validation at the end:
 
 | model | input at inference | role |
 |---|---|---|
-| LightGBM | interpretable AX-tree / geometry features (no image) | the bar to beat |
-| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot | **image + features**: the science core |
-| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot + task title | **image + features + task**: the predictor; its gap to the first = the goal-driven share |
+| LightGBM | interpretable AX-tree / geometry features (no image) | what does the metadata buy? (also the teacher's model family) |
+| ResNet-50 CNN | screenshot | what do generic visual features buy? (pixels-only control) |
+| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot | **screen (distilled)**: the science core |
+| Qwen3-VL-4B (4-bit QLoRA SFT) | screenshot + task title | **screen+task (distilled)**: the predictor; its gap to the first = the goal-driven share |
 
-Neither VLM is a pixels-only model. In **both**, at *training time only* the
-targets are blended toward a LightGBM teacher that saw privileged metadata the
-screenshot can't show — AX-tree structure, the navigation flag, step index,
-click area (learning under privileged information / generalized distillation).
-Those features shape what the model learns but never appear at inference, so
-the deployed predictor stays screenshot-only while not being handicapped
-against the metadata-rich LightGBM baseline. The two conditions differ only by
-whether the task title is in the prompt, expressed as config overlays:
-`configs/vlm.yaml` is the base (image+features) and `configs/vlm_task.yaml`
-inherits it and adds the task title.
+Both VLM conditions read ONLY the screenshot (+ task title) at inference; the
+metadata reaches them at *training time only*, split by when each feature is
+knowable:
+
+- **Screen-describing stats** (six AX-tree counts) supervise a `ui:` line the
+  model emits before its `dwell_seconds:` line — learning-from-hints /
+  rationale distillation. At inference the model generates its own estimates
+  from the pixels.
+- **Outcome/session features** (navigation flag, click-target area, step
+  index) are only knowable in hindsight — the click terminates the very dwell
+  being predicted — so they reach training solely through targets λ-blended
+  toward an out-of-fold LightGBM teacher (learning under privileged
+  information / generalized distillation). λ is selected on VALIDATION over
+  the fixed grid {0, 0.25, 0.5, 0.75, 1}; λ=0 doubles as the no-distillation
+  ablation, λ=1 as the pure-teacher ablation.
+
+The two conditions differ only by whether the task title is in the prompt,
+expressed as config overlays: `configs/vlm.yaml` is the base and
+`configs/vlm_task.yaml` inherits it and adds the task title.
 
 ## Layout
 
 ```
-configs/          every tunable number (data / baseline / vlm / eval / external)
+configs/          every tunable number (data / baseline / cnn / vlm / eval / external)
 src/totvlm/
-  data.py         raw-JSON schema + audit · VLM chat examples · output parsers
+  data.py         raw-JSON schema + audit · VLM chat examples (incl. ui scaffold) · parsers
   labels.py       per-screen dwell labels (the load-bearing spec in SPEC.md)
   images.py       screenshot resolution/cache + model-ready loader
   splits.py       domain-disjoint splits · train-only winsor cap · dataset card
-  features.py     AX-tree features for the baseline (feature-only cache)
+  features.py     AX-tree features for the baseline/teacher/scaffold (feature-only cache)
   scoring.py      shared metrics: MAE/RMSE (log & s), Spearman, calibration
   model.py        VLM load/predict (Unsloth) + LightGBM baseline
   lupi.py         privileged-info teacher (OOF LightGBM) + λ target blend
   config.py       YAML loader + `base:` overlays (vlm_task inherits vlm)
-  train.py        QLoRA SFT entrypoint (Path A: emit `dwell_seconds: X.X`)
+  train.py        QLoRA SFT entrypoint (emit `ui: ...` + `dwell_seconds: X.X`)
 scripts/          pipeline entrypoints (below)
 tests/            unit tests incl. label oracles + external-set leak guard
 artifacts/        stage cards, reports, splits.json, model files
@@ -75,48 +85,49 @@ uv run python scripts/build_dataset.py --splits
 # 2. No-image baseline (LightGBM; fetches AX-tree features, resumable cache)
 uv run python scripts/train_baseline.py
 
-# 2b. Privileged-feature teacher: out-of-fold LightGBM on the privileged
-#     features over the VLM's train rows (domain-grouped folds) → the soft
-#     targets BOTH conditions blend in at training
+# 2b. Privileged-feature teacher (OOF LightGBM, domain-grouped folds) → the
+#     soft targets BOTH conditions blend in; also writes the scaffold stats
+#     (the six screen-describing AX-tree counts for train+val)
 uv run python scripts/make_lupi_teacher.py
 
-# 2b. Pick the distillation weight λ on VALIDATION (not TEST): train the
-#     image+features model at each λ (fast — on a 15k train subsample, full VAL;
-#     see configs/sweeps/_base.yaml), keep whichever generalizes best. The final
-#     run in step 3 uses full train data.
-for L in lam00 lam10 lam25 lam35 lam50 lam60 lam75 lam90; do
-  uv run python -m totvlm.train --config configs/sweeps/$L.yaml
-done
-uv run python scripts/select_lambda.py --write   # picks VAL winner + writes it into configs/vlm.yaml
+# 2c. Pixels-only CNN baseline (GPU; TEST decoded once inside the script)
+uv run python scripts/train_cnn_baseline.py
 
-# 3. VLM fine-tuning (CUDA GPU) — always smoke-test first; two conditions,
-#    each blending the teacher into its train targets (base + one overlay)
-uv run python -m totvlm.train --config configs/vlm.yaml --dry-run
-uv run python -m totvlm.train --config configs/vlm.yaml        # image+features
-uv run python -m totvlm.train --config configs/vlm_task.yaml   # image+features+task
+# 2d. Pick the distillation weight λ on VALIDATION (not TEST): five
+#     full-fidelity runs of the screen condition, scored on the FULL val
+#     split; the winner's adapters ARE the screen condition (--deploy)
+uv run python -m totvlm.train --config configs/vlm.yaml --dry-run   # smoke test first
+for L in lam000 lam025 lam050 lam075 lam100; do
+  uv run python -m totvlm.train --config configs/sweeps/$L.yaml
+  uv run python scripts/decode_val.py --config configs/sweeps/$L.yaml
+done
+uv run python scripts/select_lambda.py --write --deploy
+
+# 3. The screen+task condition at the selected λ (CUDA GPU)
+uv run python -m totvlm.train --config configs/vlm_task.yaml
 
 # 3b. Play with the trained model on any screenshot(s) you like (GPU):
 uv run python scripts/predict.py my_screen.png
 uv run python scripts/predict.py seat_v1.png seat_v2.png --task "Pick a seat"
 
-# 4. Held-out TEST evaluation: floors vs LightGBM vs the two VLM conditions,
-#    per-screen AND task-level (per-trajectory sums) + the paper figure set
+# 4. Held-out TEST evaluation: floors vs CNN vs LightGBM vs the two VLM
+#    conditions, per-screen AND task-level (per-trajectory sums) + figures
 uv run python scripts/evaluate.py
 uv run python scripts/make_figures.py    # CPU-only, regenerable anytime
 
 # 5. External validation (READ-ONLY set, evaluated exactly once, zero-shot)
-#    of the frozen image+features model + AIM theory-grounding analysis
+#    of the frozen screen-only model + AIM theory-grounding analysis
 uv run python scripts/prepare_external.py
 uv run python scripts/validate_external.py
 uv run python scripts/analyze_aim.py
 ```
 
 Reports land in `artifacts/`: `dataset_card.md`, `baseline_report.md`,
-`lupi_teacher_card.md`, `vlm_train_card.md` (one per condition),
-`eval_report.md`, `external_report.md`, `aim_analysis.md`, and the figure set
-in `artifacts/figures/`.
+`cnn_baseline_report.md`, `lupi_teacher_card.md`, `vlm_train_card.md` (one per
+condition), `eval_report.md`, `external_report.md`, `aim_analysis.md`, and the
+figure set in `artifacts/figures/`.
 
-## Running on a SLURM cluster — three jobs
+## Running on a SLURM cluster — two jobs
 
 ```bash
 # one-time setup on the login node:
@@ -124,28 +135,20 @@ uv run hf auth login           # WebChain is gated
 wandb login                    # or export WANDB_MODE=offline + `wandb sync`
 
 mkdir -p logs
-sbatch scripts/setup.sbatch    # CPU: raw download → dataset → baseline → LUPI teacher → external prep
+sbatch scripts/setup.sbatch    # CPU: raw download → dataset → baseline → teacher + scaffold stats → external prep
 # ...when it finishes:
-sbatch scripts/sweep.sbatch    # GPU: train each λ on a subsample → picks the VAL
-                               #      winner and writes it into configs/vlm.yaml
-sbatch scripts/train.sbatch    # GPU: the two VLM conditions → eval + figures → external
+sbatch scripts/train.sbatch    # GPU: CNN baseline → λ grid → select+deploy →
+                               #      screen+task condition → eval + figures → external
 ```
 
-The λ sweep is a one-time selection step: it writes the chosen `lupi.lambda`
-into `configs/vlm.yaml` for you (vlm_task.yaml inherits it), so you just submit
-`train.sbatch` next. The winner is also printed in the `sweep_%j.out` log, and
-`uv run python scripts/select_lambda.py` re-prints it anytime (add `--write` to
-re-apply it).
-
 Every stage is idempotent and fetching / training are resumable (training
-auto-resumes from the last epoch checkpoint) — **if a job hits its time
-limit, just resubmit it** and it continues where it stopped. `train.sbatch`
-fails fast with a clear message if the setup outputs are missing.
+auto-resumes from the last checkpoint) — **if a job hits its time limit, just
+resubmit it** and it continues where it stopped. `train.sbatch` fails fast
+with a clear message if the setup outputs are missing.
 
-Training stages log to the same wandb project (`tot-vlm`): `baseline-lgbm`,
-`qwen3vl4b-qlora-pathA` (image+features), and `qwen3vl4b-qlora-pathA-task`
-(image+features+task). Evaluation and figures write only to `artifacts/`
-(rerunnable offline).
+Training stages log to the same wandb project (`tot-vlm`):
+`qwen3vl4b-v3-lam*` (the grid) and `qwen3vl4b-qlora-v3-task` (screen+task).
+Evaluation and figures write only to `artifacts/` (rerunnable offline).
 
 ## Reproducibility contract (see SPEC.md for the full spec)
 

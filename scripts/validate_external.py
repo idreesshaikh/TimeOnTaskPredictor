@@ -73,6 +73,7 @@ def run_predict(cfg: dict, vcfg: dict, items: pd.DataFrame) -> None:
         max_side=img["max_side"],
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
+        scaffold=bool(vcfg["data"].get("scaffold")),
     )
     log.info(f"decoding {len(examples)} external screenshots ...")
     raw = predict_dwell_batch(
@@ -164,7 +165,7 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')} · "
         f"config `configs/external.yaml` · seed {cfg['seed']} · "
-        f"source **{src}** · model **image+features** "
+        f"source **{src}** · model **VLM (screen, distilled)** "
         f"(`{cfg['paths']['adapters']}`)_",
         "",
         "**This read-only set was evaluated exactly once, zero-shot, with "
@@ -172,9 +173,10 @@ def run_report(cfg: dict, items: pd.DataFrame, rerun: bool) -> None:
         "tuning (SPEC.md; path access enforced by "
         "`tests/test_external_guard.py`).",
         "",
-        "The image+features model reads only the screenshot at inference "
-        "(its privileged features were train-time only), so this images-only "
-        "external set is a valid zero-shot probe.",
+        "The screen-only model reads only the screenshot at inference (the "
+        "metadata shaped its training targets, and the scaffold stats it "
+        "emits are its own estimates), so this images-only external set is "
+        "a valid zero-shot probe.",
     ]
     if rerun:
         lines += [

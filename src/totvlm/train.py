@@ -38,7 +38,12 @@ from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTConfig, SFTTrainer
 
 from totvlm.config import load_config
-from totvlm.data import build_vlm_examples, parse_dwell_output
+from totvlm.data import (
+    ROW_KEY,
+    SCAFFOLD_FIELDS,
+    build_vlm_examples,
+    parse_dwell_output,
+)
 from totvlm.lupi import blend_lupi_targets
 from totvlm.model import load_vlm
 from totvlm.scoring import regression_metrics
@@ -164,6 +169,7 @@ def _write_train_card(
     train_losses: list[dict], eval_losses: list[dict],
     decode_history: list[dict], vram: dict, checkpoint_dir: str,
     lupi_stats: dict | None = None,
+    scaffold_stats: dict | None = None,
 ) -> None:
     first = train_losses[0]["loss"] if train_losses else None
     last = train_losses[-1]["loss"] if train_losses else None
@@ -183,7 +189,7 @@ def _write_train_card(
         f"- Target: `dwell_seconds: X.X` (winsor cap {winsor_cap:.3f} s,"
         f" train-split p95 — see artifacts/dataset_card.md)",
         f"- Task title in prompt: **{cfg['data']['include_task_title']}**"
-        f" (False = image+features, True = image+features+task)",
+        f" (False = screen only, True = screen+task)",
         *([
             f"- Features (train-time only): targets blended toward the"
             f" privileged-feature teacher (λ={lupi_stats['lambda']}) —"
@@ -192,6 +198,13 @@ def _write_train_card(
             f" {lupi_stats['mean_abs_shift_s']} s; val targets untouched,"
             f" inference stays screenshot-only"
         ] if lupi_stats else []),
+        *([
+            f"- Scaffold (v3): target emits the visible axTree stats as a"
+            f" `ui:` line before the dwell — supervised coverage train"
+            f" {scaffold_stats['coverage_train']:.1%} · val"
+            f" {scaffold_stats['coverage_val']:.1%}; at inference the model"
+            f" generates its own estimates (input stays image-only)"
+        ] if scaffold_stats else []),
         f"- Examples: train **{n_train}** · val **{n_val}** (img_resolved only)",
         "",
         "## Memory footprint",
@@ -255,7 +268,7 @@ def _write_train_card(
                 "effective_config": {
                     "train": tcfg, "model": cfg["model"], "image": img,
                     "data": cfg["data"], "dry_run": dry_run,
-                    "lupi": lupi_stats,
+                    "lupi": lupi_stats, "scaffold": scaffold_stats,
                 },
             },
             indent=2, default=str,
@@ -316,6 +329,7 @@ def main() -> None:
     winsor_cap = float(df.loc[df["split"] == "train", "dwell_s"].max())
 
     img = cfg["image"]
+    scaffold = bool(cfg["data"].get("scaffold"))
     build = lambda part: build_vlm_examples(  # noqa: E731
         part,
         winsor_cap=winsor_cap,
@@ -323,9 +337,11 @@ def main() -> None:
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
         include_task_title=cfg["data"]["include_task_title"],
+        scaffold=scaffold,
     )
     print("1/4  Building chat examples ...", flush=True)
     train_part = _load_split(df, "train", n_train_limit, seed)
+    val_part = _load_split(df, "val", n_val_limit, seed)
     # LUPI condition: blend the TRAIN targets toward the privileged-feature
     # teacher's out-of-fold prediction. Val targets are never blended.
     lupi_stats = None
@@ -338,8 +354,30 @@ def main() -> None:
               f"/{lupi_stats['n_rows']} train targets "
               f"(λ={lupi_stats['lambda']}, mean |shift| "
               f"{lupi_stats['mean_abs_shift_s']} s)", flush=True)
+    # Scaffold condition (v3): merge the real axTree stats so the target's
+    # `ui:` line is supervised on train AND val (val loss covers the full
+    # two-line format). Rows without stats keep the dwell-only target.
+    scaffold_stats = None
+    if scaffold:
+        stats = pd.read_parquet(cfg["data"]["scaffold_stats"])
+        stat_cols = [col for _, col in SCAFFOLD_FIELDS]
+        train_part = train_part.merge(
+            stats[ROW_KEY + stat_cols], on=ROW_KEY, how="left", validate="1:1"
+        )
+        val_part = val_part.merge(
+            stats[ROW_KEY + stat_cols], on=ROW_KEY, how="left", validate="1:1"
+        )
+        cov_tr = float(train_part[stat_cols].notna().all(axis=1).mean())
+        cov_va = float(val_part[stat_cols].notna().all(axis=1).mean())
+        scaffold_stats = {
+            "coverage_train": round(cov_tr, 4),
+            "coverage_val": round(cov_va, 4),
+        }
+        print(f"     scaffold: ui-stats coverage train {cov_tr:.1%} · "
+              f"val {cov_va:.1%} (uncovered rows keep the dwell-only "
+              f"target)", flush=True)
     train_ds = build(train_part)
-    val_ds = build(_load_split(df, "val", n_val_limit, seed))
+    val_ds = build(val_part)
     print(f"     train {len(train_ds)} · val {len(val_ds)} "
           f"(winsor cap {winsor_cap:.3f} s)", flush=True)
     if not train_ds or not val_ds:
@@ -445,7 +483,7 @@ def main() -> None:
         n_train=len(train_ds), n_val=len(val_ds), winsor_cap=winsor_cap,
         tcfg=tcfg, train_losses=train_losses, eval_losses=eval_losses,
         decode_history=decode_cb.history, vram=vram, checkpoint_dir=out_dir,
-        lupi_stats=lupi_stats,
+        lupi_stats=lupi_stats, scaffold_stats=scaffold_stats,
     )
     print(f"\nAdapters → {final_dir} · card → {card_path}")
 

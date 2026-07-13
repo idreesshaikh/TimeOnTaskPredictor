@@ -1,7 +1,7 @@
 """Decode the FULL validation split with a trained adapter — the λ-selection
 metric.
 
-    uv run python scripts/decode_val.py --config configs/sweeps/lam45.yaml
+    uv run python scripts/decode_val.py --config configs/sweeps/lam050.yaml
 
 Why this exists: the per-pass val decodes inside the train cards use only
 `eval.decode_samples` rows — far too few to rank λ values whose true MAE(log)
@@ -41,7 +41,7 @@ def main() -> None:
     )
     ap.add_argument("--config", required=True,
                     help="the config the adapter was trained with, e.g. "
-                         "configs/sweeps/lam45.yaml")
+                         "configs/sweeps/lam050.yaml")
     ap.add_argument("--checkpoint", default=None,
                     help="adapter dir (default: <output_dir>/final)")
     ap.add_argument("--out", default=None,
@@ -73,6 +73,7 @@ def main() -> None:
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
         include_task_title=cfg["data"]["include_task_title"],
+        scaffold=bool(cfg["data"].get("scaffold")),
     )
     # gold labels in the same row order build_vlm_examples uses (same mask,
     # same iteration order) — avoids loading every image twice

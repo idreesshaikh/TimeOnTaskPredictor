@@ -1,6 +1,6 @@
 """Data layer: typed tolerant views over raw WebChain JSON + the raw audit,
-the SFT chat-example builder (assistant turn = `dwell_seconds: X.X`), and the
-matching output parsers."""
+the SFT chat-example builder (assistant turn = `dwell_seconds: X.X`, plus the
+v3 `ui:` scaffold line when enabled), and the matching output parsers."""
 from __future__ import annotations
 
 import json
@@ -268,7 +268,33 @@ SYSTEM_PROMPT = (
     "next action. Reply with exactly: dwell_seconds: <number to 1 dp>"
 )
 
-# Exactly what the model is trained to emit — anything else is a parse failure.
+# Scaffold condition (v3): the assistant turn FIRST states the visible UI
+# statistics, THEN the dwell. At train time the stats are the real axTree
+# counts (auxiliary supervision — learning-from-hints / rationale
+# distillation); at inference the model generates its own estimates from the
+# screenshot, so the input stays image-only. Only screen-describing stats may
+# appear here — outcome features (nav flag, click area, step index) reach
+# training solely through the LUPI target blend.
+SCAFFOLD_FIELDS = (            # (output name, rows/features column)
+    ("nodes", "ax_n_nodes"),
+    ("interactive", "ax_n_interactive"),
+    ("links", "ax_n_links"),
+    ("buttons", "ax_n_buttons"),
+    ("inputs", "ax_n_inputs"),
+    ("text", "ax_text_len"),
+)
+
+SYSTEM_PROMPT_SCAFFOLD = (
+    "You estimate how many seconds a user spends on this screen before their "
+    "next action. First state the screen's UI statistics, then the dwell. "
+    "Reply with exactly two lines:\n"
+    "ui: nodes=<int> interactive=<int> links=<int> buttons=<int> "
+    "inputs=<int> text=<int>\n"
+    "dwell_seconds: <number to 1 dp>"
+)
+
+# Exactly what the model is trained to emit — anything else is a parse
+# failure. The dwell is always the LAST line, with or without the scaffold.
 DWELL_OUTPUT_RE = re.compile(r"^\s*dwell_seconds:\s*([0-9]+(?:\.[0-9]+)?)\s*$")
 
 
@@ -279,9 +305,25 @@ def format_dwell_target(dwell_s: float, winsor_cap: float) -> str:
     return f"dwell_seconds: {min(max(dwell_s, 0.0), winsor_cap):.1f}"
 
 
+def format_scaffold_target(
+    stats: dict | None, dwell_s: float, winsor_cap: float
+) -> str:
+    """Two-line assistant turn: `ui: ...` stats then the dwell line. Rows
+    whose axTree stats are missing (`stats` None) fall back to the dwell-only
+    target — coverage is reported on the train card, never hidden."""
+    dwell_line = format_dwell_target(dwell_s, winsor_cap)
+    if stats is None:
+        return dwell_line
+    ui = " ".join(f"{name}={int(stats[col])}" for name, col in SCAFFOLD_FIELDS)
+    return f"ui: {ui}\n{dwell_line}"
+
+
 def parse_dwell_output(text: str | None) -> float | None:
-    """Inverse of format_dwell_target. None ⇒ the output did not parse."""
-    m = DWELL_OUTPUT_RE.match(text or "")
+    """Inverse of the target formats: the dwell is read from the LAST
+    non-empty line, so plain and scaffolded outputs parse identically.
+    None ⇒ the output did not parse."""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    m = DWELL_OUTPUT_RE.match(lines[-1]) if lines else None
     return float(m.group(1)) if m else None
 
 
@@ -316,14 +358,16 @@ def _vlm_messages(
     task_title: str | None,
     target_text: str,
     include_task_title: bool,
+    scaffold: bool = False,
 ) -> list[dict]:
     """One chat example in the format UnslothVisionDataCollator expects."""
     user_content: list[dict] = [{"type": "image", "image": image}]
     if include_task_title and task_title:
         user_content.append({"type": "text", "text": f"Task: {task_title}"})
+    system = SYSTEM_PROMPT_SCAFFOLD if scaffold else SYSTEM_PROMPT
     return [
         {"role": "system",
-         "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
+         "content": [{"type": "text", "text": system}]},
         {"role": "user", "content": user_content},
         {"role": "assistant",
          "content": [{"type": "text", "text": target_text}]},
@@ -339,12 +383,14 @@ class VlmExamples(Sequence):
     Supports int and slice indexing (predict_dwell_batch slices chunks)."""
 
     def __init__(self, records: list[dict], *, max_side: int,
-                 min_pixels: int, max_pixels: int, include_task_title: bool):
+                 min_pixels: int, max_pixels: int, include_task_title: bool,
+                 scaffold: bool = False):
         self._records = records
         self._max_side = max_side
         self._min_pixels = min_pixels
         self._max_pixels = max_pixels
         self._include_task_title = include_task_title
+        self._scaffold = scaffold
 
     def __len__(self) -> int:
         return len(self._records)
@@ -366,6 +412,7 @@ class VlmExamples(Sequence):
                 r["task_title"],
                 r["target_text"],
                 self._include_task_title,
+                scaffold=self._scaffold,
             ),
             "dwell_s": r["dwell_s"],
             "is_navigation": r["is_navigation"],
@@ -380,22 +427,39 @@ def build_vlm_examples(
     min_pixels: int,
     max_pixels: int,
     include_task_title: bool = False,
+    scaffold: bool = False,
 ) -> VlmExamples:
     """img_resolved rows → lazy chat examples (VlmExamples: images load on
     access, never all at once; plain dicts, not datasets.map — avoids Arrow
     image conversion). The extra keys (dwell_s, is_navigation) are ignored
-    by the collator and used by the val decode hook / evaluation."""
+    by the collator and used by the val decode hook / evaluation.
+
+    `scaffold=True` (v3): the target gains a `ui: ...` stats line supervised
+    from the axTree feature columns (merged onto df by totvlm.train); rows
+    missing those stats keep the dwell-only target."""
     rows = df[df["img_resolved"] & df["img_path"].notna()]
     # LUPI: totvlm.lupi.blend_lupi_targets adds `target_s` (the soft training
     # target); `dwell_s` stays the true label for the decode hook / evaluation.
     blended = "target_s" in rows.columns
+    stat_cols = [col for _, col in SCAFFOLD_FIELDS]
+    has_stats = scaffold and all(c in rows.columns for c in stat_cols)
+
+    def _target(r) -> str:
+        dwell = float(r.target_s if blended else r.dwell_s)
+        if not scaffold:
+            return format_dwell_target(dwell, winsor_cap)
+        stats = (
+            {c: getattr(r, c) for c in stat_cols} if has_stats else None
+        )
+        if stats and any(pd.isna(v) for v in stats.values()):
+            stats = None
+        return format_scaffold_target(stats, dwell, winsor_cap)
+
     records = [
         {
             "img_path": r.img_path,
             "task_title": getattr(r, "task_title", None),
-            "target_text": format_dwell_target(
-                float(r.target_s if blended else r.dwell_s), winsor_cap
-            ),
+            "target_text": _target(r),
             "dwell_s": float(r.dwell_s),
             "is_navigation": bool(r.is_navigation),
         }
@@ -407,6 +471,7 @@ def build_vlm_examples(
         min_pixels=min_pixels,
         max_pixels=max_pixels,
         include_task_title=include_task_title,
+        scaffold=scaffold,
     )
 
 
@@ -417,10 +482,13 @@ def build_inference_examples(
     min_pixels: int,
     max_pixels: int,
     task_title: str | None = None,
+    scaffold: bool = False,
 ) -> list[dict]:
     """Prompt-only chat examples for arbitrary screenshots (external
     validation, predict.py) — exactly the trained prompt format. `task_title`
-    (applied to every image) matches the screen+task condition."""
+    (applied to every image) matches the screen+task condition. `scaffold`
+    must match training: the model then emits its own `ui:` estimates before
+    the dwell line (input stays image-only)."""
     return [
         {
             "messages": _vlm_messages(
@@ -431,6 +499,7 @@ def build_inference_examples(
                     max_pixels=max_pixels,
                 ),
                 task_title, "", include_task_title=task_title is not None,
+                scaffold=scaffold,
             )[:-1],   # drop the (empty) assistant turn: prompt only
         }
         for p in img_paths

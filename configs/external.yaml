@@ -8,8 +8,8 @@ vlm_config: configs/vlm.yaml   # prompt/image knobs must match training
 source: vsgui10k
 
 paths:
-  # The FROZEN image+features model (screenshot in, features distilled at
-  # train time). Its privileged features were train-time only, so this
+  # The FROZEN screen-only model (screenshot in; metadata reached it only
+  # through the training targets — LUPI blend + ui scaffold). This
   # images-only external set stays a valid zero-shot probe.
   adapters: artifacts/vlm_ckpt/final
   external_root: data/external
@@ -26,7 +26,7 @@ vsgui10k:
 
 predict:                      # GPU stage (frozen adapters, zero-shot)
   batch_size: 8
-  max_new_tokens: 12
+  max_new_tokens: 48          # scaffold `ui:` line + dwell line, w/ headroom
 
 report:
   bootstrap_samples: 10000    # seeded bootstrap over items for the CI

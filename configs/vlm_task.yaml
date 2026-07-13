@@ -1,8 +1,9 @@
-# Condition 2 of 2 — IMAGE + FEATURES + TASK = configs/vlm.yaml + the task
+# Condition 2 of 2 — SCREENSHOT + TASK TITLE = configs/vlm.yaml + the task
 # title in the prompt. Overlay: inherit every knob from the base (including
-# the `lupi:` privileged-feature training blend) and override ONLY the
-# difference, so the gap between the two conditions cleanly measures the
-# goal-driven share of dwell. max_seq_length already has task headroom.
+# the `lupi:` outcome-feature blend and the `ui:` scaffold supervision) and
+# override ONLY the difference, so the gap between the two conditions cleanly
+# measures the goal-driven share of dwell. max_seq_length already has task
+# headroom.
 base: vlm.yaml
 
 paths:
@@ -13,4 +14,4 @@ data:
   include_task_title: true          # ← the ONLY difference vs configs/vlm.yaml
 
 train:
-  run_name: qwen3vl4b-qlora-pathA-task
+  run_name: qwen3vl4b-qlora-v3-task

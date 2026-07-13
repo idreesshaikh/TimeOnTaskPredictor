@@ -1,0 +1,38 @@
+# Pixels-only CNN baseline (scripts/train_cnn_baseline.py): an ImageNet-
+# pretrained ResNet-50 regressor on the screenshot alone — no features, no
+# distillation, no language model. It anchors the comparison ladder between
+# the constant floors and the VLM conditions: what do generic visual features
+# buy, before any metadata shapes training?
+# Evaluated ONCE on TEST (same discipline as the LightGBM baseline).
+seed: 42
+
+paths:
+  rows_final: data/processed/rows_final.parquet
+  model_out: artifacts/cnn_baseline.pt            # best-by-val weights
+  test_preds: artifacts/cnn_test_preds.parquet    # KEY + cnn_pred_log
+  report: artifacts/cnn_baseline_report.md
+
+model:
+  arch: resnet50
+  pretrained: true          # ImageNet weights; fc head replaced by Linear(→1)
+  freeze_backbone: false    # full fine-tune — the head alone underfits UIs
+
+image:
+  size: 224                 # direct resize (no crop — UI edges carry signal);
+                            # aspect distortion noted in the report
+
+train:
+  epochs: 8
+  batch_size: 64
+  learning_rate: 3.0e-5     # backbone LR; head uses 10× (standard fine-tune)
+  weight_decay: 0.01
+  num_workers: 8
+  patience: 2               # early stop on val MAE(log); best epoch deploys
+  loss: l1                  # matches the MAE(log) headline metric
+
+dry_run:                    # --dry-run: tiny CPU-able smoke test
+  n_train: 64
+  n_val: 32
+  epochs: 1
+  batch_size: 8
+  num_workers: 0

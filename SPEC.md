@@ -3,33 +3,45 @@
 ## Goal
 Predict how long a user dwells on a web UI screen before acting — and, by summing
 per-screen predictions within a trajectory, how long the whole task takes.
-Research question (v2): how accurately can per-screen — and, by aggregation,
+Research question (v3): how accurately can per-screen — and, by aggregation,
 whole-task — Time-on-Task be predicted from rendered UI screens, and how much of
 that predictability resides in the screen alone versus the user's stated task?
-Two trained conditions, and NEITHER is a pixels-only model:
-- image+features (configs/vlm.yaml — the science core)
-- image+features+task-title (configs/vlm_task.yaml — the predictor)
-Both read only the screenshot (+ task title for the second) at INFERENCE, but
-their TRAIN targets are λ-blended toward an out-of-fold LightGBM teacher that
-saw the privileged features (axTree stats, nav flag, step index, click area) —
-features the screenshot itself can't show. Generalized distillation / learning
-under privileged information: the metadata shapes what the model learns but
-never appears at inference, so the deployed predictor stays screenshot-only
-while not being handicapped relative to the metadata-rich LightGBM baseline.
-The two conditions are identical except the task-title prompt flag, so their
-gap = the goal-driven share of dwell. They are compared against the no-image
-LightGBM baseline and the predict-the-median floors.
-All privileged-info logic (the teacher's out-of-fold predictions and the λ
-target blend) lives in `totvlm/lupi.py`. configs/vlm.yaml is the base (it
-carries the `lupi:` block); configs/vlm_task.yaml is a thin `base: vlm.yaml`
-overlay that only adds the task title, so the "identical except one flag" claim
-holds in the files themselves.
+
+Two trained conditions, both SCREENSHOT-ONLY at inference:
+- screen (configs/vlm.yaml — the science core)
+- screen+task-title (configs/vlm_task.yaml — the predictor)
+They are identical except the task-title prompt flag, so their gap = the
+goal-driven share of dwell.
+
+The metadata features are split by WHEN they are knowable, and each half
+reaches training through its own published mechanism — neither is ever a
+model input:
+- SCREEN-DESCRIBING stats (six axTree counts: nodes, interactive, links,
+  buttons, inputs, text length) are knowable the moment the screen renders →
+  they supervise a `ui:` line the model emits BEFORE the dwell line
+  (auxiliary output supervision / learning-from-hints; rationale
+  distillation). At inference the model generates its own estimates from the
+  pixels.
+- OUTCOME/SESSION features (nav flag, click-target area, step index) are
+  only knowable in hindsight — the click terminates the very dwell being
+  predicted → they reach training solely through λ-blended targets toward an
+  out-of-fold LightGBM teacher (generalized distillation / LUPI; Lopez-Paz
+  et al. 2016). Blend + teacher logic lives in `totvlm/lupi.py`; the λ grid
+  is fixed: {0, 0.25, 0.5, 0.75, 1}, selected on VALIDATION only.
+
+Comparison ladder (all on identical TEST rows):
+floors (train mean/median) < CNN (pixels only, no distillation — what do
+generic visual features buy?) ≶ LightGBM (features only, no image — what does
+the metadata buy? doubles as the teacher's model family) < VLM (screen) <
+VLM (screen+task). configs/vlm.yaml is the base; configs/vlm_task.yaml is a
+thin `base: vlm.yaml` overlay that only adds the task title, so the
+"identical except one flag" claim holds in the files themselves.
 
 ## Non-negotiable rules
 - Reproducibility: global seed = 42 (Python, NumPy, torch, split assignment). Python 3.12.
 - Splits are by REGISTRABLE DOMAIN (eTLD+1 via `tldextract`). A domain appears in exactly
   one of {train, val, test}. Never split by trajectory or step. Save assignments to
-  `artifacts/splits.json` and reuse them everywhere.
+  `artifacts/splits.json` and reuse them everywhere — never recompute silently.
 - The external validation set (VSGUI10K) is READ-ONLY and is
   evaluated exactly once, zero-shot. It is NEVER used to pick features, hyperparameters,
   thresholds, or the winsorization cap. Keep it under `data/external/` and never reference
@@ -38,6 +50,10 @@ holds in the files themselves.
   config may `base:` another and override only what differs (deep-merged) —
   shared knobs are declared once, in the base.
 - Every stage writes a small JSON/markdown "card" of stats to `artifacts/`.
+- TEST discipline: TEST is decoded once, by scripts/evaluate.py, for the
+  final conditions only. λ and every other choice are selected on VAL.
+  (Historical caveat, disclose in the paper: v1/v2 exploration consumed TEST
+  several times; v3 results must be labeled accordingly.)
 
 ## Label definition (the load-bearing spec)
 Input data = a list of trajectory objects. Each has `steps` (list). Each step may have:
@@ -64,19 +80,27 @@ Row construction:
 
 ## Backbone / training
 - Model: Qwen3-VL-4B-Instruct via Unsloth `FastVisionModel`, 4-bit QLoRA, LoRA on the
-  vision AND language attention+MLP layers, r=16, alpha=16, dropout=0.05. (v2: the vision
-  layers were frozen in the first run; LoRA-tuning them lets the screenshot itself inform
-  the estimate. BOTH conditions use the identical setup, so the two-condition gap stays a
-  clean measure of the task-title effect.)
-- Primary output = Path A: SFT the model to emit exactly `dwell_seconds: X.X` (1 decimal).
+  vision AND language attention+MLP layers, r=16, alpha=16, dropout=0.05. BOTH conditions
+  use the identical setup, so the two-condition gap stays a clean measure of the
+  task-title effect.
+- Output format (v3, both conditions): two lines —
+  `ui: nodes=<int> interactive=<int> links=<int> buttons=<int> inputs=<int> text=<int>`
+  then `dwell_seconds: X.X` (1 decimal). The `ui:` line is supervised from
+  real axTree stats on train AND val (scaffold_stats.parquet); parsers read
+  the dwell from the LAST line, so scaffolded and plain outputs score
+  identically.
+- CNN baseline: ImageNet-pretrained ResNet-50 regressor on the screenshot
+  (scripts/train_cnn_baseline.py, configs/cnn.yaml) — no features, no
+  distillation, no scaffold; the pixels-only control row.
 - Model selection: evaluate + checkpoint several times per epoch and DEPLOY THE BEST
   checkpoint by validation loss (`load_best_model_at_end`) — never the last epoch, which
-  overfits. The single distillation weight λ (configs/vlm.yaml `lupi.lambda`) is likewise
-  selected on VALIDATION only (candidate grid in configs/sweeps/, searched
-  bracket-and-refine by scripts/run_sweep.py — coarse anchors, then only the
-  neighbours of the best λ until both are worse — and the winner recorded via
-  scripts/select_lambda.py).
-  Neither selection ever touches TEST.
+  overfits. λ is selected on VALIDATION over the fixed grid {0, 0.25, 0.5, 0.75, 1}
+  (configs/sweeps/lam*.yaml — each a FULL-fidelity run of the screen condition,
+  scored on the full val split by scripts/decode_val.py); scripts/select_lambda.py
+  ranks them, patches configs/vlm.yaml, and with --deploy promotes the winner's
+  adapters to be the screen-only condition (no duplicate retrain). λ=0 doubles as
+  the no-distillation ablation, λ=1 as the pure-teacher ablation. Neither
+  selection ever touches TEST.
 - Training needs a CUDA GPU (`uv sync --extra vlm`). Always run
   `python -m totvlm.train --dry-run` (the memory smoke test) before a full run.
 
@@ -84,23 +108,22 @@ Row construction:
 1. `scripts/build_dataset.py --audit | --labels | --resolve-images | --splits`
    → rows_final.parquet, splits.json, dataset_card.md
 2. `scripts/train_baseline.py` → no-image LightGBM baseline + baseline_report.md
-2b. `scripts/make_lupi_teacher.py` → lupi_teacher_preds.parquet +
-   lupi_teacher_card.md (OOF LightGBM on privileged features, folds grouped
-   by registrable domain — feeds the `lupi:` block that BOTH trained
-   conditions use)
-2c. λ selection (GPU, VAL only): `scripts/run_sweep.py` bracket-and-refine
-   search over `configs/sweeps/lam*.yaml` (trains the coarse anchors, then only
-   the grid neighbours of the best-VAL λ until both are worse — typically 4-6
-   of the 8 overlays) → `scripts/select_lambda.py` picks the lowest-VAL-error λ
-   → copy it into `configs/vlm.yaml`. TEST is never used to choose λ.
-3. `python -m totvlm.train --config configs/vlm.yaml | configs/vlm_task.yaml`
-   → QLoRA adapters + train cards for the two conditions (GPU; each blends the
-   privileged-feature teacher into its train targets; deploys the best-by-val-loss
-   checkpoint)
-4. `scripts/evaluate.py` → TEST head-to-head (floors < LightGBM <
-   VLM image+features < VLM image+features+task), per-screen AND task-level
-   (per-trajectory sums) + eval_report.md + eval_metrics.json +
-   eval_predictions.parquet
+2b. `scripts/make_lupi_teacher.py` → lupi_teacher_preds.parquet (OOF LightGBM
+   on the outcome features, folds grouped by registrable domain — the `lupi:`
+   soft-target half) + scaffold_stats.parquet (the six screen-describing
+   axTree counts for train+val — the `ui:` supervision) + lupi_teacher_card.md
+2c. `scripts/train_cnn_baseline.py` (GPU) → pixels-only ResNet-50 control:
+   cnn_test_preds.parquet + cnn_baseline_report.md (TEST decoded once, inside
+   the script, same discipline as the LightGBM baseline)
+2d. λ grid (GPU, VAL only): train each `configs/sweeps/lam*.yaml` (5 runs max,
+   full fidelity) → `scripts/decode_val.py` per run (full-val metrics) →
+   `scripts/select_lambda.py --write --deploy` (winner λ → configs/vlm.yaml;
+   winner adapters → the screen-only condition). TEST is never used to choose λ.
+3. `python -m totvlm.train --config configs/vlm_task.yaml` → the screen+task
+   condition at the selected λ (GPU; auto-resumes; deploys best-by-val-loss)
+4. `scripts/evaluate.py` → TEST head-to-head (floors, CNN, LightGBM, both VLM
+   conditions), per-screen AND task-level (per-trajectory sums) +
+   eval_report.md + eval_metrics.json + eval_predictions.parquet
 5. `scripts/make_figures.py` → the paper figure set (artifacts/figures/),
    CPU-only, rebuilt from cached artifacts — never runs a model
 6. `scripts/prepare_external.py` + `scripts/validate_external.py` +
@@ -108,9 +131,10 @@ Row construction:
    → zero-shot external check + external_report.md (evaluate-once, guarded)
 
 Cluster: two idempotent, resumable jobs (resubmit on timeout — they continue).
-`sbatch scripts/setup.sbatch` (CPU: download → dataset → baseline → external
-prep), then `sbatch scripts/train.sbatch` (GPU: both conditions → eval +
-figures → external zero-shot + AIM).
+`sbatch scripts/setup.sbatch` (CPU: download → dataset → baseline → teacher +
+scaffold stats → external prep), then `sbatch scripts/train.sbatch` (GPU: CNN
+baseline → λ grid → select+deploy → screen+task condition → eval + figures →
+external zero-shot + AIM).
 
 ## Verified test oracles (use as pytest ground truth)
 Trajectory id `yjeXPEBxd5EACsDz4xPWx` → 3 rows:

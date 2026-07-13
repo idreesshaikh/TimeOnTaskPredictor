@@ -3,7 +3,11 @@
 # index, click area) over the VLM's TRAIN rows. These become the soft half of
 # the training target in BOTH trained conditions (configs/vlm.yaml and its
 # +task overlay); the blend weight λ lives in those configs. Val/test are
-# never touched here.
+# never touched by the teacher.
+#
+# v3: the same stage also writes scaffold_stats.parquet — the six
+# SCREEN-DESCRIBING axTree counts for train+val rows, which supervise the
+# `ui:` line of the training target (never a model input).
 seed: 42
 
 # LightGBM params + axTree fetch knobs come from the baseline config so the
@@ -13,6 +17,7 @@ baseline_config: configs/baseline.yaml
 paths:
   rows_final: data/processed/rows_final.parquet
   teacher_preds: artifacts/lupi_teacher_preds.parquet
+  scaffold_stats: artifacts/scaffold_stats.parquet
   card: artifacts/lupi_teacher_card.md
 
 teacher:

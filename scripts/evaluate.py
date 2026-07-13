@@ -1,4 +1,5 @@
-"""TEST-split head-to-head: floors < LightGBM < VLM(screen) < VLM(screen+task),
+"""TEST-split head-to-head: floors < {CNN pixels-only, LightGBM features-only}
+< VLM(screen) < VLM(screen+task),
 per screen AND per task (per-trajectory sums).
 
     uv run python scripts/evaluate.py [--config configs/eval.yaml]
@@ -112,6 +113,7 @@ def run_predict(
         min_pixels=img["min_pixels"],
         max_pixels=img["max_pixels"],
         include_task_title=mcfg["include_task_title"],
+        scaffold=bool(vcfg["data"].get("scaffold")),
     )
     assert len(examples) == len(rows)
 
@@ -297,7 +299,7 @@ def edge_paragraph(vlm: dict, lgbm: dict) -> str:
     n_in, n_nav = vlm["in_page"]["n"], vlm["navigation"]["n"]
 
     where = (
-        f"On identical rows, the image+features VLM's MAE(log) edge over "
+        f"On identical rows, the screen-only VLM's MAE(log) edge over "
         f"LightGBM is **{d_in:+.4f} on in-page steps** (n={n_in}) and "
         f"**{d_nav:+.4f} on navigation steps** (n={n_nav}); positive = VLM "
         f"better."
@@ -346,7 +348,7 @@ def goal_increment_paragraph(screen: dict, task: dict) -> str:
     return (
         f"Adding the task title changes MAE(log) by **{d_all:+.4f} overall** "
         f"({d_in:+.4f} in-page, {d_nav:+.4f} navigation; positive = "
-        f"image+features+task better). Read: {verdict}"
+        f"screen+task better). Read: {verdict}"
     )
 
 
@@ -455,11 +457,26 @@ def run_report(
         "train-median floor": float(np.median(y_train)),
     }
 
-    # Head-to-head on identical rows: floors < LightGBM < VLM condition(s)
+    # Head-to-head on identical rows:
+    # floors < CNN (pixels only) ≶ LightGBM (features only) < VLM condition(s)
     y_c = common["y"].to_numpy()
     nav_c = common["is_navigation"].to_numpy()
     models = {name: np.full_like(y_c, const) for name, const in floors.items()}
     models["LightGBM (no image)"] = common["lgbm_pred_log"].to_numpy()
+    cnn_path = cfg["paths"].get("cnn_preds")
+    if cnn_path and Path(cnn_path).is_file():
+        cnn = common.merge(
+            pd.read_parquet(cnn_path), on=KEY, how="left", validate="1:1"
+        )
+        if cnn["cnn_pred_log"].isna().any():
+            raise SystemExit(
+                "CNN preds cache is missing head-to-head rows — rerun "
+                "scripts/train_cnn_baseline.py"
+            )
+        models["CNN (image only)"] = cnn["cnn_pred_log"].to_numpy()
+    else:
+        log.info("no CNN baseline preds cache — row skipped "
+                 "(run scripts/train_cnn_baseline.py to add it)")
     for name, frame in vlm_frames.items():
         models[name] = frame.loc[common_mask, "vlm_pred_log"].to_numpy()
     head_lines, head_metrics = metrics_table(models, y_c, nav_c)
@@ -504,12 +521,12 @@ def run_report(
     paragraphs = [
         edge_paragraph(head_metrics[primary_name], head_metrics["LightGBM (no image)"])
     ]
-    if ("VLM (image+features)" in head_metrics
-            and "VLM (image+features+task)" in head_metrics):
+    if ("VLM (screen, distilled)" in head_metrics
+            and "VLM (screen+task, distilled)" in head_metrics):
         paragraphs.append(
             goal_increment_paragraph(
-                head_metrics["VLM (image+features)"],
-                head_metrics["VLM (image+features+task)"],
+                head_metrics["VLM (screen, distilled)"],
+                head_metrics["VLM (screen+task, distilled)"],
             )
         )
 
