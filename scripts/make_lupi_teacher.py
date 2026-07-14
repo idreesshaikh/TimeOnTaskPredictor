@@ -20,7 +20,18 @@ are knowable the moment the screen renders. The outcome features (nav flag,
 click area, step index) never appear in either — they reach training only
 through the teacher blend, and the teacher itself is still fit on TRAIN rows
 only. External stats are never extracted (VSGUI10K has no axTrees; the
-external check stays screenshot-only)."""
+external check stays screenshot-only).
+
+`teacher.features` in the config picks the teacher's design matrix:
+  all      — every baseline column, screen stats included (v2 behavior, default)
+  outcome  — hindsight-only columns (nav flag, click area, step index, action
+             one-hots): the six screen-describing axTree counts are dropped, so
+             the teacher carries ONLY information the `ui:` scaffold cannot —
+             the λ gap then reads cleanly as the worth of hindsight metadata.
+Both variants fit on the SAME rows (axTree-resolved), so their OOF quality and
+downstream λ sweeps are directly comparable. `teacher.write_scaffold: false`
+skips rewriting scaffold_stats.parquet (variant runs must not touch the file
+the main conditions read)."""
 from __future__ import annotations
 
 import argparse
@@ -68,7 +79,13 @@ def main() -> None:
     np.random.seed(seed)
     random.seed(seed)
     fcfg = bcfg["features"]
-    k = cfg["teacher"]["k_folds"]
+    tcfg = cfg["teacher"]
+    k = tcfg["k_folds"]
+    feature_set = tcfg.get("features", "all")
+    if feature_set not in ("all", "outcome"):
+        raise SystemExit(f"teacher.features must be 'all' or 'outcome', "
+                         f"got {feature_set!r}")
+    write_scaffold = tcfg.get("write_scaffold", True)
 
     # Teacher preds are needed exactly where the VLM trains: TRAIN rows with
     # a resolved screenshot. Scaffold stats span all three splits: VAL for
@@ -113,11 +130,14 @@ def main() -> None:
     scaffold = all_frame[
         ROW_KEY + ["split"] + list(AXTREE_FEATURE_NAMES)
     ].reset_index(drop=True)
-    scaffold_dest = Path(cfg["paths"]["scaffold_stats"])
-    scaffold_dest.parent.mkdir(parents=True, exist_ok=True)
-    scaffold.to_parquet(scaffold_dest, compression="zstd", index=False)
-    log.info(f"scaffold stats ({len(scaffold)} train+val+test rows) → "
-             f"{scaffold_dest}")
+    if write_scaffold:
+        scaffold_dest = Path(cfg["paths"]["scaffold_stats"])
+        scaffold_dest.parent.mkdir(parents=True, exist_ok=True)
+        scaffold.to_parquet(scaffold_dest, compression="zstd", index=False)
+        log.info(f"scaffold stats ({len(scaffold)} train+val+test rows) → "
+                 f"{scaffold_dest}")
+    else:
+        log.info("write_scaffold=false — scaffold_stats.parquet left untouched")
 
     # The teacher itself is fit on TRAIN rows only.
     frame = all_frame[all_frame["split"] == "train"]
@@ -125,9 +145,19 @@ def main() -> None:
         raise SystemExit("no rows with resolved axTree features — nothing "
                          "for the teacher to learn from")
 
+    cols = feature_columns(vocab)
+    if feature_set == "outcome":
+        # Hindsight-only teacher: the screen-describing counts are dropped —
+        # they already reach the student through the `ui:` scaffold line, and
+        # keeping them here would let screen structure enter through two
+        # channels at once. Row set is unchanged (axTree-resolved) so both
+        # teacher variants are comparable on identical rows.
+        cols = [c for c in cols if c not in AXTREE_FEATURE_NAMES]
+    log.info(f"teacher features = {feature_set} ({len(cols)} columns)")
+
     lgbm_params = dict(bcfg["lightgbm"], random_state=seed)
     frame, fold_stats = oof_teacher_predictions(
-        frame, feature_columns(vocab),
+        frame, cols,
         k=k, seed=seed,
         lgbm_params=lgbm_params,
         early_stopping_rounds=bcfg["early_stopping_rounds"],
@@ -147,6 +177,8 @@ def main() -> None:
     coverage = len(out) / max(len(vlm_train), 1)
     payload = {
         "k_folds": k,
+        "feature_set": feature_set,
+        "feature_columns": cols,
         "folds": fold_stats,
         "oof_metrics": oof_metrics,
         "rows": {
@@ -159,17 +191,24 @@ def main() -> None:
             "no_axtree_url": n_no_axtree,
             "axtree_fetch_failed": n_fetch_failed,
         },
-        "scaffold_stats_rows": len(scaffold),
+        "scaffold_stats_rows": len(scaffold) if write_scaffold else 0,
         "limit": args.limit,
     }
+    feature_desc = (
+        "All baseline features (axTree stats, nav flag, step index, click "
+        "area)" if feature_set == "all" else
+        "OUTCOME features only (nav flag, step index, click area, action "
+        "one-hots) — the six screen-describing axTree counts are excluded; "
+        "they reach the student solely through the `ui:` scaffold line"
+    )
     lines = [
-        "# LUPI teacher card — out-of-fold LightGBM on privileged features",
+        f"# LUPI teacher card — out-of-fold LightGBM "
+        f"(features: {feature_set})",
         "",
         f"_Generated {datetime.now(UTC).isoformat(timespec='seconds')} · "
         f"config `{args.config}` · seed {seed} · k={k} domain-grouped folds_",
         "",
-        "Privileged features (axTree stats, nav flag, step index, click "
-        "area) exist at TRAIN time only. Each train row's prediction comes "
+        f"{feature_desc}. Each train row's prediction comes "
         "from a booster that never saw its registrable domain; these become "
         "the soft half of both trained conditions' target (λ in "
         "configs/vlm.yaml). Val/test targets are never blended; inference "
@@ -179,10 +218,13 @@ def main() -> None:
         f"(**{coverage:.1%}**) — uncovered rows keep the true label",
         f"- Excluded: {n_no_axtree} without an axTree URL · "
         f"{n_fetch_failed} fetch/parse failures (train+val+test)",
-        f"- Scaffold stats (v3): **{len(scaffold)}** train+val+test rows → "
-        f"`{cfg['paths']['scaffold_stats']}` — the six screen-describing "
-        f"axTree counts (scaffold `ui:` target line on train+val; prompt "
-        f"INPUT for the feature-input conditions on every split)",
+        (f"- Scaffold stats (v3): **{len(scaffold)}** train+val+test rows → "
+         f"`{cfg['paths']['scaffold_stats']}` — the six screen-describing "
+         f"axTree counts (scaffold `ui:` target line on train+val; prompt "
+         f"INPUT for the feature-input conditions on every split)"
+         if write_scaffold else
+         "- Scaffold stats: NOT written (write_scaffold=false — variant run; "
+         "the main scaffold_stats.parquet is untouched)"),
         *([f"- ⚠️ `--limit {args.limit}` was set — smoke run, not the full "
            f"teacher"] if args.limit else []),
         "",

@@ -1,0 +1,13 @@
+# λ=1.00 (pure outcome-teacher ablation), OUTCOME-ONLY teacher grid — see
+# outcome/lam025.yaml. Identical to ../lam100.yaml except teacher + paths.
+base: ../lam100.yaml
+
+paths:
+  output_dir: artifacts/sweeps_outcome/vlm_lam100
+  train_card: artifacts/sweeps_outcome/vlm_lam100_card.md
+
+lupi:
+  teacher_preds: artifacts/lupi_teacher_preds_outcome.parquet
+
+train:
+  run_name: qwen3vl4b-v3-lam100-outcome

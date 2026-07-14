@@ -1,0 +1,24 @@
+# OUTCOME-ONLY LUPI teacher — comparison variant, fully parallel to the main
+# pipeline (nothing here overwrites a main artifact).
+#
+# Rationale: the six screen-describing axTree counts already reach the student
+# through the `ui:` scaffold line, so keeping them in the teacher lets screen
+# structure enter through two channels at once and muddies the λ-gap reading.
+# This teacher sees ONLY the hindsight features (nav flag, click-target area,
+# step index, action one-hots) — the genuinely privileged information.
+# Same rows, same folds, same LightGBM params as the main teacher, so the two
+# OOF cards and the two λ sweeps compare like-for-like.
+#
+#   uv run python scripts/make_lupi_teacher.py --config configs/lupi_outcome.yaml
+#
+# then train the sweep overlays in configs/sweeps/outcome/ (λ=0 is teacher-free
+# and identical to configs/sweeps/lam000.yaml — reuse that run, don't repeat it).
+base: lupi.yaml
+
+paths:
+  teacher_preds: artifacts/lupi_teacher_preds_outcome.parquet
+  card: artifacts/lupi_teacher_card_outcome.md
+
+teacher:
+  features: outcome        # drop the six ax_* counts from the design matrix
+  write_scaffold: false    # NEVER rewrite scaffold_stats.parquet from a variant

@@ -1,0 +1,19 @@
+# λ=0.25 with the OUTCOME-ONLY teacher (configs/lupi_outcome.yaml) — the
+# comparison grid for "does the teacher need the screen stats, or is the
+# hindsight half enough?". Inherits the matching main grid point and swaps
+# ONLY the teacher parquet + output paths, so the pair is identical except
+# the teacher's feature set. λ=0 has no outcome variant: it never reads the
+# teacher, so configs/sweeps/lam000.yaml doubles for both grids.
+# Outputs land in artifacts/sweeps_outcome/ — NEVER artifacts/sweeps/, which
+# scripts/select_lambda.py globs by default for the main deployment.
+base: ../lam025.yaml
+
+paths:
+  output_dir: artifacts/sweeps_outcome/vlm_lam025
+  train_card: artifacts/sweeps_outcome/vlm_lam025_card.md
+
+lupi:
+  teacher_preds: artifacts/lupi_teacher_preds_outcome.parquet
+
+train:
+  run_name: qwen3vl4b-v3-lam025-outcome
